@@ -281,7 +281,195 @@
 }
 .undoBtn:hover { border-color: var(--error); color: var(--error); }
 
+/* ── Direction toggle ────────────────────────────────────────────────────────── */
+
+.directionToggle {
+  display: flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 3px;
+  align-self: flex-start;
+}
+
+.dirBtn {
+  padding: 0.4rem 1rem;
+  border: none;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.dirBtn:hover { color: var(--text-secondary); }
+.dirActive {
+  background: var(--gold);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ── Candidates section (EN→ES) ──────────────────────────────────────────────── */
+
+.candidatesSection { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.candidatesHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.candidatesHint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  font-weight: 600;
+}
+
+.discardAllBtn {
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.discardAllBtn:hover { border-color: var(--error); color: var(--error); }
+
+.candidatesList { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.candidateCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  transition: border-color 0.15s;
+}
+.candidateCard:hover { border-color: var(--border-strong); }
+.candidateSaved {
+  border-color: var(--success-border);
+  background: var(--success-bg);
+}
+
+.candidateTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.candidateWordRow {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.candidateWord {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+}
+
+.candidatePos {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.candidateLevel {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  background: var(--gold-bg);
+  color: var(--gold);
+  border: 1px solid var(--gold-light);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.candidateActions { flex-shrink: 0; }
+
+.saveCandidateBtn {
+  padding: 0.4rem 1rem;
+  background: var(--gold);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.saveCandidateBtn:hover { opacity: 0.88; }
+
+.savedBadge {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.alreadyBadge {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.candidateDetails {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.candidateRow {
+  display: flex;
+  gap: 0.6rem;
+  font-size: 0.875rem;
+}
+
+.candidateLabel {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+  white-space: nowrap;
+  padding-top: 0.15rem;
+  min-width: 52px;
+}
+
+.candidateMeaning {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.candidateExample {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.candidateValue { color: var(--text-secondary); }
+
 @media (max-width: 640px) {
   .formGrid { grid-template-columns: 1fr; }
   .formFieldWide { grid-column: 1; }
+  .directionToggle { align-self: stretch; }
+  .dirBtn { flex: 1; text-align: center; }
 }

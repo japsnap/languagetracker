@@ -1,4 +1,4 @@
-# SpanishTool
+# LanguageTracker Beta
 
 A personal Spanish vocabulary learning app with AI-powered word lookup, a spaced-repetition quiz, and progress tracking.
 

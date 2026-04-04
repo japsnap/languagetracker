@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import PasswordGate from './components/Auth/PasswordGate';
 import { useVocabulary } from './hooks/useVocabulary';
 import Navigation from './components/Navigation/Navigation';
 import ReviewPage from './components/Review/ReviewPage';
@@ -8,6 +9,25 @@ import QuizPage from './components/Quiz/QuizPage';
 import styles from './App.module.css';
 
 export default function App() {
+  const [isAuthed, setIsAuthed] = useState(
+    () => sessionStorage.getItem('lt_authed') === '1'
+  );
+
+  if (!isAuthed) {
+    return (
+      <PasswordGate
+        onSuccess={() => {
+          sessionStorage.setItem('lt_authed', '1');
+          setIsAuthed(true);
+        }}
+      />
+    );
+  }
+
+  return <AppShell />;
+}
+
+function AppShell() {
   const [activeTab, setActiveTab] = useState('review');
   const { words, loading, error, toggleStar, updateWord, addWord, removeWord } = useVocabulary();
 
