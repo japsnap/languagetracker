@@ -6,7 +6,7 @@ import {
 import { memorizationLevel } from '../../utils/vocabulary';
 import styles from './StatsPage.module.css';
 
-const LEVEL_FILL = { A1: '#5E7228', A2: '#2A7A5A', B1: '#C9942A', B2: '#B84320', C1: '#7B3FA0', C2: '#3F5EA0' };
+const LEVEL_FILL = { A1: '#111111', A2: '#333333', B1: '#555555', B2: '#777777', C1: '#999999', C2: '#BBBBBB' };
 
 function computeStats(words) {
   const total        = words.length;
@@ -124,8 +124,8 @@ export default function StatsPage({ words }) {
                 <AreaChart data={stats.timeline} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                   <defs>
                     <linearGradient id="goldGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%"  stopColor="#C9942A" stopOpacity={0.35} />
-                      <stop offset="95%" stopColor="#C9942A" stopOpacity={0.04} />
+                      <stop offset="5%"  stopColor="#111111" stopOpacity={0.15} />
+                      <stop offset="95%" stopColor="#111111" stopOpacity={0.02} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
@@ -133,9 +133,9 @@ export default function StatsPage({ words }) {
                   <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
                   <Tooltip
                     contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
-                    cursor={{ stroke: 'var(--gold)', strokeDasharray: '4 2' }}
+                    cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '4 2' }}
                   />
-                  <Area type="monotone" dataKey="count" stroke="#C9942A" strokeWidth={2} fill="url(#goldGrad)" />
+                  <Area type="monotone" dataKey="count" stroke="#111111" strokeWidth={2} fill="url(#goldGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}

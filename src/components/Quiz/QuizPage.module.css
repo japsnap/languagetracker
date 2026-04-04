@@ -213,9 +213,9 @@
 .answerBtn.wrong    { background: var(--terracotta-bg);  border-color: var(--terracotta);  color: var(--terracotta); }
 .answerBtn.notSure  { background: var(--gold-bg);        border-color: var(--gold);        color: var(--gold); }
 
-.answerBtn.correct:hover  { background: #dde8c0; }
-.answerBtn.wrong:hover    { background: #f5ddd5; }
-.answerBtn.notSure:hover  { background: #fdecc0; }
+.answerBtn.correct:hover  { background: #ddeedd; }
+.answerBtn.wrong:hover    { background: #ffdddd; }
+.answerBtn.notSure:hover  { background: var(--bg-active); }
 
 /* ── Reveal ─────────────────────────────────────────────────────────────────── */
 

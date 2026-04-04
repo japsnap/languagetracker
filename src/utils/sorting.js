@@ -15,11 +15,14 @@ export const SORT_OPTIONS = [
   { value: 'last-reviewed', label: 'Least Recently Reviewed' },
 ];
 
-export function filterAndSort(words, { search, sortBy, starredOnly, scene }) {
+export const ALL_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+export function filterAndSort(words, { search, sortBy, starredOnly, scene, levels }) {
   let result = words;
 
   if (starredOnly) result = result.filter(w => w.starred);
   if (scene) result = result.filter(w => w.scene === scene);
+  if (levels && levels.length > 0) result = result.filter(w => levels.includes(w.recommended_level));
 
   if (search.trim()) {
     const q = search.trim().toLowerCase();

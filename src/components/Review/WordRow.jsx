@@ -7,6 +7,8 @@ const LEVEL_COLORS = {
   A2: 'var(--level-a2)',
   B1: 'var(--level-b1)',
   B2: 'var(--level-b2)',
+  C1: 'var(--level-c1)',
+  C2: 'var(--level-c2)',
 };
 
 export default function WordRow({

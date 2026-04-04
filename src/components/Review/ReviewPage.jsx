@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { filterAndSort, SORT_OPTIONS, SCENES } from '../../utils/sorting';
+import { filterAndSort, SORT_OPTIONS, SCENES, ALL_LEVELS } from '../../utils/sorting';
 import WordRow from './WordRow';
 import styles from './ReviewPage.module.css';
 
@@ -8,6 +8,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
   const [sortBy, setSortBy]       = useState('alpha-asc');
   const [starredOnly, setStarredOnly] = useState(false);
   const [scene, setScene]         = useState('');
+  const [levels, setLevels]       = useState([]);
   const [expandedId, setExpandedId]   = useState(null);
 
   // Bulk select
@@ -15,9 +16,15 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkScene, setBulkScene]     = useState('');
 
+  function toggleLevel(lvl) {
+    setLevels(prev =>
+      prev.includes(lvl) ? prev.filter(l => l !== lvl) : [...prev, lvl]
+    );
+  }
+
   const filtered = useMemo(
-    () => filterAndSort(words, { search, sortBy, starredOnly, scene }),
-    [words, search, sortBy, starredOnly, scene]
+    () => filterAndSort(words, { search, sortBy, starredOnly, scene, levels }),
+    [words, search, sortBy, starredOnly, scene, levels]
   );
 
   function handleToggleExpand(id) {
@@ -77,6 +84,18 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
               <option value="">All scenes</option>
               {SCENES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
             </select>
+
+            <div className={styles.levelFilter}>
+              {ALL_LEVELS.map(lvl => (
+                <button
+                  key={lvl}
+                  className={`${styles.levelBtn} ${levels.includes(lvl) ? styles.levelActive : ''}`}
+                  onClick={() => toggleLevel(lvl)}
+                >
+                  {lvl}
+                </button>
+              ))}
+            </div>
 
             <label className={styles.checkLabel}>
               <input type="checkbox" checked={starredOnly} onChange={e => setStarredOnly(e.target.checked)} />

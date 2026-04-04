@@ -1,70 +1,73 @@
-/* ── Google Fonts (Playfair Display + Inter) ─────────────────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
+/* ── Google Fonts (Nunito) ──────────────────────────────────────────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800&display=swap');
 
 /* ── Design tokens ───────────────────────────────────────────────────────────── */
 :root {
   /* Backgrounds */
-  --bg-page:     #FBF5EC;
-  --bg-card:     #FFFCF6;
-  --bg-elevated: #FFF5E8;
-  --bg-input:    #FEFCF8;
-  --bg-hover:    #F5EBD8;
-  --bg-active:   #EDE0C8;
-  --bg-thead:    #F5EBD8;
+  --bg-page:     #F5F5F5;
+  --bg-card:     #FFFFFF;
+  --bg-elevated: #EEEEEE;
+  --bg-input:    #FFFFFF;
+  --bg-hover:    #F0F0F0;
+  --bg-active:   #E8E8E8;
+  --bg-thead:    #F5F5F5;
 
   /* Navigation */
-  --nav-bg:         #2D1205;
-  --nav-border:     #C9942A;
-  --nav-text:       #F5E6C8;
-  --nav-muted:      #9A7E60;
-  --nav-active:     #E8C96D;
-  --nav-hover-bg:   rgba(255, 255, 255, 0.07);
+  --nav-bg:         #111111;
+  --nav-border:     #333333;
+  --nav-text:       #FFFFFF;
+  --nav-muted:      #888888;
+  --nav-active:     #FFFFFF;
+  --nav-hover-bg:   rgba(255, 255, 255, 0.08);
 
   /* Text */
-  --text-primary:     #2C1A0E;
-  --text-secondary:   #6B5040;
-  --text-muted:       #A08060;
-  --text-placeholder: #C0A882;
+  --text-primary:     #111111;
+  --text-secondary:   #444444;
+  --text-muted:       #888888;
+  --text-placeholder: #BBBBBB;
 
   /* Borders */
-  --border:        #E2D0B8;
-  --border-strong: #C8A880;
-  --border-focus:  #C9942A;
+  --border:        #E0E0E0;
+  --border-strong: #CCCCCC;
+  --border-focus:  #111111;
 
-  /* Brand colours */
-  --gold:            #C9942A;
-  --gold-light:      #E8C96D;
-  --gold-bg:         #FFF3D0;
-  --terracotta:      #B84320;
-  --terracotta-bg:   #FFF0E8;
-  --olive:           #5E7228;
-  --olive-bg:        #EEF3DC;
+  /* Accent — black replaces gold throughout */
+  --gold:            #111111;
+  --gold-light:      #555555;
+  --gold-bg:         #EEEEEE;
 
-  /* Semantic */
-  --success:        #5A7A28;
-  --success-bg:     #EEF3DC;
-  --success-border: #8AAA48;
-  --error:          #B8341A;
-  --error-bg:       #FBF0EC;
-  --error-border:   #D87058;
-  --warning:        #C9942A;
-  --warning-bg:     #FFF8E0;
-  --warning-border: #E8C96D;
+  /* Semantic colours — keep functional */
+  --terracotta:      #CC2222;
+  --terracotta-bg:   #FFF0F0;
+  --olive:           #2A7A3A;
+  --olive-bg:        #EEF6EE;
 
-  /* Level badge colours */
-  --level-a1: #5E7228;
-  --level-a2: #2A7A5A;
-  --level-b1: #C9942A;
-  --level-b2: #B84320;
+  --success:        #2A7A3A;
+  --success-bg:     #EEF6EE;
+  --success-border: #80BB88;
+  --error:          #CC2222;
+  --error-bg:       #FFF0F0;
+  --error-border:   #EE8888;
+  --warning:        #996600;
+  --warning-bg:     #FFFBEE;
+  --warning-border: #DDAA44;
+
+  /* Level badge colours — greyscale gradient A1 (dark) → C2 (light) */
+  --level-a1: #111111;
+  --level-a2: #333333;
+  --level-b1: #555555;
+  --level-b2: #777777;
+  --level-c1: #999999;
+  --level-c2: #BBBBBB;
 
   /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(80, 40, 10, 0.08);
-  --shadow-md: 0 3px 10px rgba(80, 40, 10, 0.12);
-  --shadow-lg: 0 6px 20px rgba(80, 40, 10, 0.15);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 3px 10px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 6px 20px rgba(0, 0, 0, 0.12);
 
   /* Typography */
-  --font-heading: 'Playfair Display', Georgia, serif;
-  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-body:    'Nunito', -apple-system, BlinkMacSystemFont, sans-serif;
 
   /* Radii */
   --radius-sm: 4px;
@@ -94,4 +97,4 @@ input, select, textarea { font-family: var(--font-body); }
 ::-webkit-scrollbar       { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg-page); }
 ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--gold); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
