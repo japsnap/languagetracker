@@ -6,7 +6,7 @@ import {
 import { memorizationLevel } from '../../utils/vocabulary';
 import styles from './StatsPage.module.css';
 
-const LEVEL_FILL = { A1: '#5E7228', A2: '#2A7A5A', B1: '#C9942A', B2: '#B84320' };
+const LEVEL_FILL = { A1: '#5E7228', A2: '#2A7A5A', B1: '#C9942A', B2: '#B84320', C1: '#7B3FA0', C2: '#3F5EA0' };
 
 function computeStats(words) {
   const total        = words.length;
@@ -24,7 +24,7 @@ function computeStats(words) {
     ? Math.round(((totalAttempts - totalErrors) / totalAttempts) * 100)
     : null;
 
-  const byLevel = ['A1','A2','B1','B2'].map(lvl => ({
+  const byLevel = ['A1','A2','B1','B2','C1','C2'].map(lvl => ({
     level: lvl,
     count: words.filter(w => w.recommended_level === lvl).length,
   }));

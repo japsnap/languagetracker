@@ -3,7 +3,7 @@ import { buildPool, pickNext } from '../../utils/quiz';
 import { SCENES } from '../../utils/sorting';
 import styles from './QuizPage.module.css';
 
-const ALL_LEVELS = ['A1', 'A2', 'B1', 'B2'];
+const ALL_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 const ANSWER_ICONS = { correct: '✅', wrong: '❌', 'not-sure': '🤷' };
 
 const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak: 0 };

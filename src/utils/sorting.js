@@ -1,6 +1,6 @@
 import { memorizationLevel } from './vocabulary';
 
-const LEVEL_ORDER = { A1: 0, A2: 1, B1: 2, B2: 3 };
+const LEVEL_ORDER = { A1: 0, A2: 1, B1: 2, B2: 3, C1: 4, C2: 5 };
 
 export const SCENES = ['social', 'business', 'travel', 'daily', 'food', 'academic', 'slang', 'other'];
 
