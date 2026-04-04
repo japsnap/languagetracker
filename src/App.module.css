@@ -8,6 +8,12 @@
   /* Navigation is 58px sticky */
 }
 
+.tabSpinner {
+  display: flex;
+  justify-content: center;
+  padding: 4rem 0;
+}
+
 .loadingScreen,
 .errorScreen {
   min-height: 100vh;

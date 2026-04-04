@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useState, lazy, Suspense } from 'react';
 import PasswordGate from './components/Auth/PasswordGate';
 import { useVocabulary } from './hooks/useVocabulary';
 import Navigation from './components/Navigation/Navigation';
-import ReviewPage from './components/Review/ReviewPage';
-import StatsPage from './components/Stats/StatsPage';
-import InputPage from './components/Input/InputPage';
-import QuizPage from './components/Quiz/QuizPage';
 import styles from './App.module.css';
+
+const ReviewPage = lazy(() => import('./components/Review/ReviewPage'));
+const StatsPage  = lazy(() => import('./components/Stats/StatsPage'));
+const InputPage  = lazy(() => import('./components/Input/InputPage'));
+const QuizPage   = lazy(() => import('./components/Quiz/QuizPage'));
 
 export default function App() {
   const [isAuthed, setIsAuthed] = useState(
@@ -60,16 +61,18 @@ function AppShell() {
     <div className={styles.app}>
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
       <main className={styles.main}>
-        {activeTab === 'review' && (
-          <ReviewPage words={words} onToggleStar={toggleStar} onUpdateWord={updateWord} />
-        )}
-        {activeTab === 'stats' && <StatsPage words={words} />}
-        {activeTab === 'input' && (
-          <InputPage words={words} onAddWord={addWord} onRemoveWord={removeWord} />
-        )}
-        {activeTab === 'quiz' && (
-          <QuizPage words={words} onUpdateWord={updateWord} />
-        )}
+        <Suspense fallback={<div className={styles.tabSpinner}><div className={styles.loadingSpinner} /></div>}>
+          {activeTab === 'review' && (
+            <ReviewPage words={words} onToggleStar={toggleStar} onUpdateWord={updateWord} />
+          )}
+          {activeTab === 'stats' && <StatsPage words={words} />}
+          {activeTab === 'input' && (
+            <InputPage words={words} onAddWord={addWord} onRemoveWord={removeWord} />
+          )}
+          {activeTab === 'quiz' && (
+            <QuizPage words={words} onUpdateWord={updateWord} />
+          )}
+        </Suspense>
       </main>
     </div>
   );
