@@ -90,7 +90,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
 
   // ── save ──────────────────────────────────────────────────────────────────────
 
-  function handleSave(force = false) {
+  async function handleSave(force = false) {
     if (!fields.word.trim()) return;
 
     // Duplicate check
@@ -104,10 +104,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
       }
     }
 
-    const nextId = words.length > 0 ? Math.max(...words.map(w => w.id)) + 1 : 1;
     const today = localToday();
-    const newWord = {
-      id: nextId,
+    const wordData = {
       word:               fields.word.trim(),
       part_of_speech:     fields.part_of_speech,
       meaning:            fields.meaning,
@@ -125,17 +123,20 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
       scene:              null,
     };
 
-    onAddWord(newWord);
-    setSessionAdded(prev => [newWord, ...prev].slice(0, 5));
-
-    // Flash confirmation, then reset
-    setSavedFlash(`"${newWord.word}" saved!`);
-    setTimeout(() => setSavedFlash(''), 2500);
-    setPhase('idle');
-    setFields(EMPTY_FIELDS);
-    setInputWord('');
-    setDuplicate(null);
-    setShowExisting(false);
+    try {
+      const saved = await onAddWord(wordData);
+      setSessionAdded(prev => [saved, ...prev].slice(0, 5));
+      setSavedFlash(`"${saved.word}" saved!`);
+      setTimeout(() => setSavedFlash(''), 2500);
+      setPhase('idle');
+      setFields(EMPTY_FIELDS);
+      setInputWord('');
+      setDuplicate(null);
+      setShowExisting(false);
+    } catch (err) {
+      setErrorMsg(err.message || 'Failed to save word. Try again.');
+      setPhase('error');
+    }
   }
 
   function handleUndoAdd(id) {

@@ -1,43 +1,53 @@
 /**
- * Data layer — all reads/writes go through here.
- * To migrate to Supabase: replace localStorage calls with API calls.
+ * Data layer — all reads/writes go through Supabase.
+ * Pure helpers (localToday, memorizationLevel) are unchanged.
  */
 
-import seedData from '../data/vocabulary.json';
+import { supabase } from './supabase';
 
-const STORAGE_KEY = 'spanish_vocab_v1';
+const TABLE = 'vocabulary';
 
-export function loadWords() {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY);
-    if (stored) return JSON.parse(stored);
-  } catch {
-    // corrupted storage — fall through to seed
-  }
-  saveWords(seedData);
-  return seedData;
+export async function loadWords() {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .select('*')
+    .order('id', { ascending: true });
+
+  if (error) throw new Error(error.message);
+  return data;
 }
 
-export function saveWords(words) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(words));
+export async function updateWordDB(id, changes) {
+  const { error } = await supabase
+    .from(TABLE)
+    .update(changes)
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
 }
 
-export function updateWord(words, id, changes) {
-  const updated = words.map(w => (w.id === id ? { ...w, ...changes } : w));
-  saveWords(updated);
-  return updated;
+export async function toggleStarDB(id, starred) {
+  return updateWordDB(id, { starred });
 }
 
-export function toggleStar(words, id) {
-  const word = words.find(w => w.id === id);
-  if (!word) return words;
-  return updateWord(words, id, { starred: !word.starred });
+export async function addWordDB(wordData) {
+  const { data, error } = await supabase
+    .from(TABLE)
+    .insert(wordData)
+    .select()
+    .single();
+
+  if (error) throw new Error(error.message);
+  return data;
 }
 
-export function removeWord(words, id) {
-  const updated = words.filter(w => w.id !== id);
-  saveWords(updated);
-  return updated;
+export async function removeWordDB(id) {
+  const { error } = await supabase
+    .from(TABLE)
+    .delete()
+    .eq('id', id);
+
+  if (error) throw new Error(error.message);
 }
 
 /** Returns today's date as YYYY-MM-DD in the user's local timezone. */

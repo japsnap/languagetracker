@@ -9,7 +9,32 @@ import styles from './App.module.css';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('review');
-  const { words, toggleStar, updateWord, addWord, removeWord } = useVocabulary();
+  const { words, loading, error, toggleStar, updateWord, addWord, removeWord } = useVocabulary();
+
+  if (loading) {
+    return (
+      <div className={styles.app}>
+        <div className={styles.loadingScreen}>
+          <div className={styles.loadingSpinner} />
+          <p className={styles.loadingText}>Loading vocabulary…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={styles.app}>
+        <div className={styles.errorScreen}>
+          <p className={styles.errorTitle}>Failed to load vocabulary</p>
+          <p className={styles.errorMsg}>{error}</p>
+          <button className={styles.errorRetry} onClick={() => window.location.reload()}>
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={styles.app}>
