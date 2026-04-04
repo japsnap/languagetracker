@@ -4,7 +4,7 @@ const ES_EN_SYSTEM = `You are a Spanish language expert. When given a Spanish wo
   "part_of_speech": "string — e.g. noun, verb, adjective, phrase, gerund, verb form, etc.",
   "meaning": "string — clear English meaning",
   "example": "string — a natural Spanish sentence using the word",
-  "recommended_level": "string — exactly one of: A1, A2, B1, B2",
+  "recommended_level": "string — exactly one of: A1, A2, B1, B2, C1, C2",
   "related_words": "string — comma-separated related Spanish words, or empty string",
   "other_useful_notes": "string — grammar notes, usage tips, conjugation info, or empty string"
 }`;
@@ -16,7 +16,7 @@ const EN_ES_SYSTEM = `You are a Spanish language expert. Given an English word o
   "part_of_speech": "noun / verb / adjective / phrase / etc.",
   "meaning": "English meaning",
   "example": "Natural Spanish sentence using this word",
-  "recommended_level": "A1 | A2 | B1 | B2",
+  "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
   "related_words": "comma-separated related Spanish words, or empty string",
   "other_useful_notes": "grammar notes, usage tips, conjugation info, or empty string"
 }
