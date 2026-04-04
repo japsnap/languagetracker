@@ -1,0 +1,179 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 58px);
+  overflow: hidden;
+  background: var(--bg-page);
+}
+
+/* ── Toolbar ─────────────────────────────────────────────────────────────────── */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 1.25rem;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  box-shadow: var(--shadow-sm);
+}
+
+.search {
+  flex: 1;
+  min-width: 200px;
+  max-width: 360px;
+  padding: 0.45rem 0.75rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.search::placeholder { color: var(--text-placeholder); }
+.search:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(201,148,42,0.12); }
+
+.filterSelect {
+  padding: 0.45rem 0.6rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.filterSelect:focus { border-color: var(--border-focus); }
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.checkLabel input { accent-color: var(--gold); cursor: pointer; }
+
+.selectBtn {
+  padding: 0.4rem 0.85rem;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.selectBtn:hover { border-color: var(--gold); color: var(--gold); }
+
+.count {
+  margin-left: auto;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Bulk select toolbar items */
+.selectInfo {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.selectInfo strong { color: var(--text-primary); }
+
+.selectAllBtn {
+  padding: 0.35rem 0.65rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.selectAllBtn:hover { border-color: var(--gold); color: var(--gold); }
+
+.applyBtn {
+  padding: 0.4rem 0.85rem;
+  background: var(--gold);
+  border: none;
+  border-radius: var(--radius-md);
+  color: #fff;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.applyBtn:hover:not(:disabled) { opacity: 0.88; }
+.applyBtn:disabled { opacity: 0.4; cursor: default; }
+
+.cancelBtn {
+  padding: 0.4rem 0.75rem;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.cancelBtn:hover { border-color: var(--error); color: var(--error); }
+
+/* ── Table ───────────────────────────────────────────────────────────────────── */
+
+.tableWrapper {
+  overflow-y: auto;
+  overflow-x: auto;
+  flex: 1;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  background: var(--bg-card);
+}
+
+.table thead tr {
+  background: var(--bg-thead);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.table th {
+  padding: 0.55rem 0.75rem;
+  text-align: left;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+}
+
+.thCheck { width: 36px; }
+
+/* Empty state */
+.empty {
+  padding: 4rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 1rem;
+}
+
+@media (max-width: 640px) {
+  .toolbar { padding: 0.5rem 0.75rem; }
+  .search { min-width: 160px; }
+}

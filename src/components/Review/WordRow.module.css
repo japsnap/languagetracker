@@ -1,0 +1,185 @@
+.row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.row:hover    { background: var(--bg-hover); }
+.row.expanded { background: var(--bg-elevated); }
+.row.selected { background: var(--gold-bg); }
+
+.row td { padding: 0.6rem 0.75rem; vertical-align: middle; }
+
+/* Checkbox column */
+.checkCell { width: 36px; text-align: center; }
+.checkbox  { accent-color: var(--gold); width: 15px; height: 15px; cursor: pointer; }
+
+/* Word */
+.wordCell  { min-width: 110px; max-width: 200px; }
+.wordText  { font-weight: 600; color: var(--text-primary); }
+
+/* Part of speech */
+.posCell   { color: var(--text-muted); font-size: 0.82rem; min-width: 90px; }
+
+/* Meaning */
+.meaningCell { color: var(--text-secondary); min-width: 160px; max-width: 260px; }
+
+/* Example */
+.exampleCell {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.85rem;
+  max-width: 280px;
+}
+
+/* Level badge */
+.levelCell   { text-align: center; white-space: nowrap; }
+.levelBadge  {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 12px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.03em;
+}
+
+/* Memory bar */
+.memCell { min-width: 90px; }
+.memBar  {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 80px;
+  height: 18px;
+  background: var(--border);
+  border-radius: 9px;
+  overflow: hidden;
+}
+.memFill {
+  position: absolute;
+  left: 0; top: 0;
+  height: 100%;
+  background: linear-gradient(90deg, var(--terracotta), var(--gold), var(--olive));
+  background-size: 200px 100%;
+  background-position: right center;
+  border-radius: 9px;
+  transition: width 0.3s;
+}
+.memLabel {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  text-align: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.35);
+}
+.memNone { color: var(--text-muted); font-size: 0.85rem; }
+
+/* Star */
+.starCell { text-align: center; }
+.starBtn  {
+  background: none;
+  border: none;
+  font-size: 1.15rem;
+  cursor: pointer;
+  color: var(--border-strong);
+  padding: 0.1rem 0.3rem;
+  transition: color 0.15s, transform 0.1s;
+}
+.starBtn:hover { color: var(--gold); transform: scale(1.2); }
+.starBtn.starred { color: var(--gold); }
+
+/* Badges */
+.masteredBadge {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.1rem 0.35rem;
+  background: var(--olive-bg);
+  color: var(--olive);
+  border-radius: var(--radius-sm);
+  font-size: 0.68rem;
+  font-weight: 700;
+  vertical-align: middle;
+}
+
+.sceneBadge {
+  display: inline-block;
+  margin-left: 0.35rem;
+  padding: 0.1rem 0.35rem;
+  background: var(--terracotta-bg);
+  color: var(--terracotta);
+  border-radius: var(--radius-sm);
+  font-size: 0.68rem;
+  font-weight: 600;
+  vertical-align: middle;
+  text-transform: capitalize;
+}
+
+/* Expanded detail row */
+.detailRow { background: var(--bg-elevated); border-bottom: 2px solid var(--border); }
+.detailRow td { padding: 0; }
+
+.detailGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 2rem;
+  padding: 0.85rem 1.25rem 1.1rem;
+}
+
+.detailField {
+  display: flex;
+  flex-direction: column;
+  min-width: 130px;
+}
+
+.detailLabel {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 0.2rem;
+  font-weight: 600;
+}
+
+.detailValue {
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
+/* Scene select in detail */
+.sceneSelect {
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.sceneSelect:focus { border-color: var(--border-focus); }
+
+/* Mastered toggle in detail */
+.masteredToggle {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: var(--font-body);
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  width: fit-content;
+}
+.masteredToggle:hover { border-color: var(--olive); color: var(--olive); }
+.masteredToggle.masteredOn {
+  border-color: var(--olive);
+  color: var(--olive);
+  background: var(--olive-bg);
+}
