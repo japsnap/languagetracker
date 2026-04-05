@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { lookupWord, lookupEnglishWord } from '../../utils/anthropic';
+import { lookupWord, lookupEnglishWord, lookupWordSingle, lookupEnglishWordSingle } from '../../utils/anthropic';
 import { localToday } from '../../utils/vocabulary';
 import styles from './InputPage.module.css';
 
@@ -20,7 +20,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
   const [inputWord, setInputWord]       = useState('');
   const [phase, setPhase]               = useState('idle'); // idle | loading | preview | candidates | error
   const [fields, setFields]             = useState(EMPTY_FIELDS);
-  const [candidates, setCandidates]     = useState([]);    // EN→ES results
+  const [candidates, setCandidates]     = useState([]);    // "See more" results
   const [savedIndices, setSavedIndices] = useState(new Set());
   const [errorMsg, setErrorMsg]         = useState('');
   const [duplicate, setDuplicate]       = useState(null);
@@ -37,7 +37,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
     handleDiscard();
   }
 
-  // ── lookup ────────────────────────────────────────────────────────────────────
+  // ── lookup (single, default cheap call) ──────────────────────────────────────
 
   const handleLookup = useCallback(async (wordOverride) => {
     const term = (wordOverride ?? inputWord).trim();
@@ -53,13 +53,14 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
     setDuplicate(null);
     setShowExisting(false);
     setSavedIndices(new Set());
+    setCandidates([]);
 
     try {
       if (direction === 'es-en') {
-        const result = await lookupWord(term, controller.signal);
+        const result = await lookupWordSingle(term, controller.signal);
         clearTimeout(timeoutId);
         setFields({
-          word:               term,
+          word:               result.word              || term,
           part_of_speech:     result.part_of_speech    || '',
           meaning:            result.meaning           || '',
           example:            result.example           || '',
@@ -69,10 +70,18 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
         });
         setPhase('preview');
       } else {
-        const results = await lookupEnglishWord(term, controller.signal);
+        const result = await lookupEnglishWordSingle(term, controller.signal);
         clearTimeout(timeoutId);
-        setCandidates(results);
-        setPhase('candidates');
+        setFields({
+          word:               result.word              || term,
+          part_of_speech:     result.part_of_speech    || '',
+          meaning:            result.meaning           || '',
+          example:            result.example           || '',
+          recommended_level:  result.recommended_level || '',
+          related_words:      result.related_words     || '',
+          other_useful_notes: result.other_useful_notes || '',
+        });
+        setPhase('preview');
       }
     } catch (err) {
       clearTimeout(timeoutId);
@@ -85,6 +94,40 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
       setPhase('error');
     }
   }, [inputWord, direction]);
+
+  // ── see more (array call) ─────────────────────────────────────────────────────
+
+  const handleSeeMore = useCallback(async () => {
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    const timeoutId = setTimeout(() => controller.abort(), 15_000);
+
+    setPhase('loading');
+    setErrorMsg('');
+    setSavedIndices(new Set());
+
+    try {
+      if (direction === 'es-en') {
+        const results = await lookupWord(fields.word || inputWord, controller.signal);
+        clearTimeout(timeoutId);
+        setCandidates(results);
+      } else {
+        const results = await lookupEnglishWord(inputWord, controller.signal);
+        clearTimeout(timeoutId);
+        setCandidates(results);
+      }
+      setPhase('candidates');
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err.name === 'AbortError') {
+        setErrorMsg('Request timed out.');
+      } else {
+        setErrorMsg(err.message || 'Something went wrong.');
+      }
+      setPhase('error');
+    }
+  }, [direction, fields.word, inputWord]);
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') handleLookup();
@@ -106,7 +149,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
     if (abortRef.current) abortRef.current.abort();
   }
 
-  // ── save (ES→EN single word) ──────────────────────────────────────────────────
+  // ── save (ES→EN single word or EN→ES preview) ─────────────────────────────────
 
   async function handleSave(force = false) {
     if (!fields.word.trim()) return;
@@ -152,7 +195,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
     }
   }
 
-  // ── save candidate (EN→ES) ────────────────────────────────────────────────────
+  // ── save candidate (from "See more" results) ──────────────────────────────────
 
   async function handleSaveCandidate(index) {
     const c = candidates[index];
@@ -199,6 +242,12 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
   const placeholder = direction === 'es-en'
     ? 'Enter a Spanish word or phrase…'
     : 'Enter an English word or expression…';
+
+  const candidatesHint = direction === 'es-en'
+    ? `${candidates.length} meaning${candidates.length !== 1 ? 's' : ''} found — save the ones you want`
+    : `${candidates.length} Spanish match${candidates.length !== 1 ? 'es' : ''} found — save the ones you want`;
+
+  const seeMoreLabel = direction === 'es-en' ? 'See more meanings' : 'See more translations';
 
   // ── render ────────────────────────────────────────────────────────────────────
 
@@ -261,7 +310,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
           </div>
         )}
 
-        {/* ES→EN: single preview card */}
+        {/* Single preview card (both directions) */}
         {phase === 'preview' && (
           <PreviewCard
             fields={fields}
@@ -272,16 +321,16 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
             onSave={() => handleSave(false)}
             onSaveAnyway={() => handleSave(true)}
             onDiscard={handleDiscard}
+            onSeeMore={handleSeeMore}
+            seeMoreLabel={seeMoreLabel}
           />
         )}
 
-        {/* EN→ES: multi-candidate cards */}
+        {/* Multi-candidate cards (from "See more") */}
         {phase === 'candidates' && candidates.length > 0 && (
           <div className={styles.candidatesSection}>
             <div className={styles.candidatesHeader}>
-              <span className={styles.candidatesHint}>
-                {candidates.length} Spanish match{candidates.length !== 1 ? 'es' : ''} found — save the ones you want
-              </span>
+              <span className={styles.candidatesHint}>{candidatesHint}</span>
               <button className={styles.discardAllBtn} onClick={handleDiscard}>
                 Discard all
               </button>
@@ -333,9 +382,9 @@ export default function InputPage({ words, onAddWord, onRemoveWord }) {
   );
 }
 
-// ── PreviewCard (ES→EN) ───────────────────────────────────────────────────────
+// ── PreviewCard (both directions) ─────────────────────────────────────────────
 
-function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisting, onSave, onSaveAnyway, onDiscard }) {
+function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisting, onSave, onSaveAnyway, onDiscard, onSeeMore, seeMoreLabel }) {
   return (
     <div className={styles.previewCard}>
       <div className={styles.previewHeader}>
@@ -401,11 +450,19 @@ function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisti
         </button>
         <button className={styles.discardBtn} onClick={onDiscard}>Discard</button>
       </div>
+
+      {onSeeMore && (
+        <div className={styles.seeMoreRow}>
+          <button className={styles.seeMoreBtn} onClick={onSeeMore}>
+            {seeMoreLabel} →
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
-// ── CandidateCard (EN→ES) ─────────────────────────────────────────────────────
+// ── CandidateCard ─────────────────────────────────────────────────────────────
 
 function CandidateCard({ word, alreadyInVocab, isSaved, onSave }) {
   return (

@@ -1,6 +1,21 @@
-const ES_EN_SYSTEM = `You are a Spanish language expert. When given a Spanish word or phrase, respond with ONLY a valid JSON object — no markdown fences, no explanation whatsoever. Use exactly these fields:
+const ES_EN_SYSTEM = `You are a Spanish language expert. When given a Spanish word or phrase, respond with ONLY a valid JSON array of up to 3 meanings — no markdown fences, no explanation. If the user input has accent or spelling errors, correct them in the word field (e.g. espanol → español, nino → niño). Each item must use exactly these fields:
 
 {
+  "word": "the Spanish word or phrase, correctly spelled with proper accents",
+  "part_of_speech": "string — e.g. noun, verb, adjective, phrase, gerund, verb form, etc.",
+  "meaning": "string — clear English meaning",
+  "example": "string — a natural Spanish sentence using the word",
+  "recommended_level": "string — exactly one of: A1, A2, B1, B2, C1, C2",
+  "related_words": "string — comma-separated related Spanish words, or empty string",
+  "other_useful_notes": "string — grammar notes, usage tips, conjugation info, or empty string"
+}
+
+Return between 1 and 3 items. Only include genuinely different meanings or usages.`;
+
+const ES_EN_SINGLE_SYSTEM = `You are a Spanish language expert. When given a Spanish word or phrase, respond with ONLY a valid JSON object — no markdown fences, no explanation. If the user input has accent or spelling errors, correct them in the word field (e.g. espanol → español, nino → niño). Return ONLY ONE JSON object (not an array) for the single most common meaning. Use exactly these fields:
+
+{
+  "word": "the Spanish word or phrase, correctly spelled with proper accents",
   "part_of_speech": "string — e.g. noun, verb, adjective, phrase, gerund, verb form, etc.",
   "meaning": "string — clear English meaning",
   "example": "string — a natural Spanish sentence using the word",
@@ -9,7 +24,7 @@ const ES_EN_SYSTEM = `You are a Spanish language expert. When given a Spanish wo
   "other_useful_notes": "string — grammar notes, usage tips, conjugation info, or empty string"
 }`;
 
-const EN_ES_SYSTEM = `You are a Spanish language expert. Given an English word or expression, respond with ONLY a valid JSON array of up to 3 Spanish equivalents — no markdown fences, no explanation. Each item must use exactly these fields:
+const EN_ES_SYSTEM = `You are a Spanish language expert. Given an English word or expression, respond with ONLY a valid JSON array of up to 3 Spanish equivalents — no markdown fences, no explanation. If the user input has accent or spelling errors, correct them in the word field (e.g. espanol → español, nino → niño). Each item must use exactly these fields:
 
 {
   "word": "Spanish word or phrase",
@@ -22,6 +37,18 @@ const EN_ES_SYSTEM = `You are a Spanish language expert. Given an English word o
 }
 
 Return between 1 and 3 items. Only include genuinely useful Spanish equivalents.`;
+
+const EN_ES_SINGLE_SYSTEM = `You are a Spanish language expert. Given an English word or expression, respond with ONLY a valid JSON object — no markdown fences, no explanation. If the user input has accent or spelling errors, correct them in the word field. Return ONLY ONE JSON object (not an array) for the single most common meaning. Use exactly these fields:
+
+{
+  "word": "Spanish word or phrase",
+  "part_of_speech": "noun / verb / adjective / phrase / etc.",
+  "meaning": "English meaning",
+  "example": "Natural Spanish sentence using this word",
+  "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
+  "related_words": "comma-separated related Spanish words, or empty string",
+  "other_useful_notes": "grammar notes, usage tips, conjugation info, or empty string"
+}`;
 
 function buildHeaders() {
   const headers = {
@@ -56,11 +83,27 @@ async function callAPI(systemPrompt, userContent, signal, maxTokens) {
   return (data.content?.[0]?.text || '').trim();
 }
 
-/** Spanish → English: returns a single word object. */
+/** Spanish → English: returns an array of up to 3 word objects. */
 export async function lookupWord(word, signal) {
   const text = await callAPI(ES_EN_SYSTEM, word.trim(), signal, 600);
   try {
-    return JSON.parse(text);
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed : [parsed];
+  } catch {
+    const arrMatch = text.match(/\[[\s\S]*\]/);
+    if (arrMatch) return JSON.parse(arrMatch[0]);
+    const objMatch = text.match(/\{[\s\S]*\}/);
+    if (objMatch) return [JSON.parse(objMatch[0])];
+    throw new Error('Could not parse AI response. Try again or fill fields manually.');
+  }
+}
+
+/** Spanish → English (single): returns one word object for the most common meaning. */
+export async function lookupWordSingle(word, signal) {
+  const text = await callAPI(ES_EN_SINGLE_SYSTEM, word.trim(), signal, 400);
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed[0] : parsed;
   } catch {
     const match = text.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
@@ -76,6 +119,19 @@ export async function lookupEnglishWord(word, signal) {
     return Array.isArray(parsed) ? parsed : [parsed];
   } catch {
     const match = text.match(/\[[\s\S]*\]/);
+    if (match) return JSON.parse(match[0]);
+    throw new Error('Could not parse AI response. Try again.');
+  }
+}
+
+/** English → Spanish (single): returns one word object for the most common translation. */
+export async function lookupEnglishWordSingle(word, signal) {
+  const text = await callAPI(EN_ES_SINGLE_SYSTEM, word.trim(), signal, 400);
+  try {
+    const parsed = JSON.parse(text);
+    return Array.isArray(parsed) ? parsed[0] : parsed;
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
     if (match) return JSON.parse(match[0]);
     throw new Error('Could not parse AI response. Try again.');
   }
