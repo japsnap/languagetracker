@@ -52,13 +52,13 @@
   --warning-bg:     #FFFBEE;
   --warning-border: #DDAA44;
 
-  /* Level badge colours — greyscale gradient A1 (dark) → C2 (light) */
-  --level-a1: #111111;
-  --level-a2: #333333;
-  --level-b1: #555555;
-  --level-b2: #777777;
-  --level-c1: #999999;
-  --level-c2: #BBBBBB;
+  /* Level badge colours — colorful A1 (beginner) → C2 (expert) */
+  --level-a1: #4CAF50;
+  --level-a2: #66BB6A;
+  --level-b1: #2196F3;
+  --level-b2: #1565C0;
+  --level-c1: #9C27B0;
+  --level-c2: #E91E63;
 
   /* Shadows */
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);

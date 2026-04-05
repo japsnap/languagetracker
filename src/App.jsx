@@ -4,10 +4,11 @@ import { useVocabulary } from './hooks/useVocabulary';
 import Navigation from './components/Navigation/Navigation';
 import styles from './App.module.css';
 
-const ReviewPage = lazy(() => import('./components/Review/ReviewPage'));
-const StatsPage  = lazy(() => import('./components/Stats/StatsPage'));
-const InputPage  = lazy(() => import('./components/Input/InputPage'));
-const QuizPage   = lazy(() => import('./components/Quiz/QuizPage'));
+const ReviewPage   = lazy(() => import('./components/Review/ReviewPage'));
+const StatsPage    = lazy(() => import('./components/Stats/StatsPage'));
+const InputPage    = lazy(() => import('./components/Input/InputPage'));
+const QuizPage     = lazy(() => import('./components/Quiz/QuizPage'));
+const SettingsPage = lazy(() => import('./components/Settings/SettingsPage'));
 
 export default function App() {
   const [isAuthed, setIsAuthed] = useState(
@@ -72,6 +73,7 @@ function AppShell() {
           {activeTab === 'quiz' && (
             <QuizPage words={words} onUpdateWord={updateWord} />
           )}
+          {activeTab === 'settings' && <SettingsPage words={words} />}
         </Suspense>
       </main>
     </div>

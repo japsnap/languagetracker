@@ -1,10 +1,11 @@
 import styles from './Navigation.module.css';
 
 const TABS = [
-  { id: 'input',  label: 'Input' },
-  { id: 'review', label: 'Review' },
-  { id: 'stats',  label: 'Stats' },
-  { id: 'quiz',   label: 'Quiz' },
+  { id: 'input',    label: 'Input' },
+  { id: 'review',   label: 'Review' },
+  { id: 'stats',    label: 'Stats' },
+  { id: 'quiz',     label: 'Quiz' },
+  { id: 'settings', label: '⚙ Settings' },
 ];
 
 export default function Navigation({ activeTab, onTabChange }) {

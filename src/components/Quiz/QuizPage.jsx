@@ -4,6 +4,15 @@ import { SCENES } from '../../utils/sorting';
 import styles from './QuizPage.module.css';
 
 const ALL_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+const LEVEL_COLORS = {
+  A1: 'var(--level-a1)',
+  A2: 'var(--level-a2)',
+  B1: 'var(--level-b1)',
+  B2: 'var(--level-b2)',
+  C1: 'var(--level-c1)',
+  C2: 'var(--level-c2)',
+};
 const ANSWER_ICONS = { correct: '✅', wrong: '❌', 'not-sure': '🤷' };
 
 const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak: 0 };
@@ -154,15 +163,19 @@ export default function QuizPage({ words, onUpdateWord }) {
           >
             All
           </button>
-          {ALL_LEVELS.map(lvl => (
-            <button
-              key={lvl}
-              className={`${styles.levelBtn} ${settings.levels.includes(lvl) ? styles.levelActive : ''}`}
-              onClick={() => toggleLevel(lvl)}
-            >
-              {lvl}
-            </button>
-          ))}
+          {ALL_LEVELS.map(lvl => {
+            const active = settings.levels.includes(lvl);
+            return (
+              <button
+                key={lvl}
+                className={`${styles.levelBtn} ${active ? styles.levelActive : ''}`}
+                style={active ? { backgroundColor: LEVEL_COLORS[lvl], borderColor: LEVEL_COLORS[lvl], color: '#fff' } : {}}
+                onClick={() => toggleLevel(lvl)}
+              >
+                {lvl}
+              </button>
+            );
+          })}
         </div>
 
         <div className={styles.settingsGroup}>
@@ -287,7 +300,17 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, onAnswer, onChangeAnswe
       <div className={cardClass}>
         {/* Header */}
         <div className={styles.cardHeader}>
-          <span className={styles.cardPos}>{word.part_of_speech}</span>
+          <div className={styles.cardHeaderLeft}>
+            <span className={styles.cardPos}>{word.part_of_speech}</span>
+            {word.recommended_level && (
+              <span
+                className={styles.cardLevel}
+                style={{ backgroundColor: LEVEL_COLORS[word.recommended_level] }}
+              >
+                {word.recommended_level}
+              </span>
+            )}
+          </div>
           {phase === 'revealed' && lastAnswer && (
             <span className={styles.answerIcon}>{ANSWER_ICONS[lastAnswer]}</span>
           )}

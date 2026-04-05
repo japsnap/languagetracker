@@ -3,6 +3,15 @@ import { filterAndSort, SORT_OPTIONS, SCENES, ALL_LEVELS } from '../../utils/sor
 import WordRow from './WordRow';
 import styles from './ReviewPage.module.css';
 
+const LEVEL_COLORS = {
+  A1: 'var(--level-a1)',
+  A2: 'var(--level-a2)',
+  B1: 'var(--level-b1)',
+  B2: 'var(--level-b2)',
+  C1: 'var(--level-c1)',
+  C2: 'var(--level-c2)',
+};
+
 export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
   const [search, setSearch]       = useState('');
   const [sortBy, setSortBy]       = useState('alpha-asc');
@@ -86,15 +95,19 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
             </select>
 
             <div className={styles.levelFilter}>
-              {ALL_LEVELS.map(lvl => (
-                <button
-                  key={lvl}
-                  className={`${styles.levelBtn} ${levels.includes(lvl) ? styles.levelActive : ''}`}
-                  onClick={() => toggleLevel(lvl)}
-                >
-                  {lvl}
-                </button>
-              ))}
+              {ALL_LEVELS.map(lvl => {
+                const active = levels.includes(lvl);
+                return (
+                  <button
+                    key={lvl}
+                    className={`${styles.levelBtn} ${active ? styles.levelActive : ''}`}
+                    style={active ? { backgroundColor: LEVEL_COLORS[lvl], borderColor: LEVEL_COLORS[lvl], color: '#fff' } : {}}
+                    onClick={() => toggleLevel(lvl)}
+                  >
+                    {lvl}
+                  </button>
+                );
+              })}
             </div>
 
             <label className={styles.checkLabel}>
