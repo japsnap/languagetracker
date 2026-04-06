@@ -30,7 +30,7 @@ export default function App() {
 }
 
 function AppShell() {
-  const [activeTab, setActiveTab] = useState('review');
+  const [activeTab, setActiveTab] = useState('input');
   const { words, loading, error, toggleStar, updateWord, addWord, removeWord } = useVocabulary();
 
   if (loading) {

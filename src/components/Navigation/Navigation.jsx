@@ -12,7 +12,9 @@ export default function Navigation({ activeTab, onTabChange }) {
   return (
     <nav className={styles.nav}>
       <div className={styles.brand}>
-        <span className={styles.brandIcon}>¡</span>LanguageTracker Beta
+        <span className={styles.brandIcon}>¡</span>
+        <span className={styles.brandFull}>LanguageTracker Beta</span>
+        <span className={styles.brandShort}>LT</span>
       </div>
       <div className={styles.tabs}>
         {TABS.map(tab => (
