@@ -31,9 +31,10 @@ export async function toggleStarDB(id, starred) {
 }
 
 export async function addWordDB(wordData) {
+  const { data: { user } } = await supabase.auth.getUser();
   const { data, error } = await supabase
     .from(TABLE)
-    .insert(wordData)
+    .insert({ ...wordData, user_id: user?.id })
     .select()
     .single();
 
