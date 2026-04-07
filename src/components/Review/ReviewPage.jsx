@@ -14,7 +14,7 @@ const LEVEL_COLORS = {
 
 export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
   const [search, setSearch]       = useState('');
-  const [sortBy, setSortBy]       = useState('alpha-asc');
+  const [sortBy, setSortBy]       = useState('date-newest');
   const [starredOnly, setStarredOnly] = useState(false);
   const [scene, setScene]         = useState('');
   const [levels, setLevels]       = useState([]);

@@ -6,7 +6,7 @@ import {
 import { memorizationLevel } from '../../utils/vocabulary';
 import styles from './StatsPage.module.css';
 
-const LEVEL_FILL = { A1: '#111111', A2: '#333333', B1: '#555555', B2: '#777777', C1: '#999999', C2: '#BBBBBB' };
+const LEVEL_FILL = { A1: '#2E7D32', A2: '#81C784', B1: '#1565C0', B2: '#64B5F6', C1: '#7B1FA2', C2: '#E91E63' };
 
 function computeStats(words) {
   const total        = words.length;
