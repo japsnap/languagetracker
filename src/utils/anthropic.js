@@ -50,13 +50,22 @@ const EN_ES_SINGLE_SYSTEM = `You are a Spanish language expert. Given an English
   "other_useful_notes": "grammar notes, usage tips, conjugation info, or empty string"
 }`;
 
-function buildHeaders() {
-  const headers = {
-    'Content-Type': 'application/json',
-    'anthropic-version': '2023-06-01',
-  };
+import { supabase } from './supabase';
+
+async function buildHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+
+  // Dev: vite proxy sends directly to Anthropic, which requires x-api-key.
+  // VITE_ANTHROPIC_API_KEY is only needed locally and is never deployed.
   const devKey = import.meta.env.VITE_ANTHROPIC_API_KEY;
   if (devKey) headers['x-api-key'] = devKey;
+
+  // Prod: serverless function validates this token before forwarding the request.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (session?.access_token) {
+    headers['Authorization'] = `Bearer ${session.access_token}`;
+  }
+
   return headers;
 }
 
@@ -64,7 +73,7 @@ async function callAPI(systemPrompt, userContent, signal, maxTokens) {
   const response = await fetch('/api/anthropic', {
     method: 'POST',
     signal,
-    headers: buildHeaders(),
+    headers: await buildHeaders(),
     body: JSON.stringify({
       model: 'claude-sonnet-4-20250514',
       max_tokens: maxTokens,
