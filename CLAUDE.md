@@ -35,3 +35,5 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - ~784 words in Supabase, backfilled to owner user_id
 - user_events table exists but not yet populated
 - Tabs: Input, Review, Quiz, Stats, Settings (CSV export)
+
+@CHANGELOG.md
