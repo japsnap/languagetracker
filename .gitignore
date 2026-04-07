@@ -1,6 +1,7 @@
 # Environment variables (contains API keys — never commit)
 .env
 .env.local
+.env.*
 .env.*.local
 
 # Logs
