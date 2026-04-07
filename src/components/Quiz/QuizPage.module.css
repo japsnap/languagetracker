@@ -297,6 +297,9 @@
 .changeBtnType_wrong:hover    { border-color: var(--terracotta); }
 .changeBtnType_not_sure:hover { border-color: var(--gold); }
 
+/* Flag row in reveal */
+.flagRow { display: flex; justify-content: flex-end; padding-top: 0.1rem; }
+
 /* ── Done screen ────────────────────────────────────────────────────────────── */
 
 .doneScreen {

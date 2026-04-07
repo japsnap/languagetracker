@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback } from 'react';
 import { buildPool, pickNext } from '../../utils/quiz';
 import { SCENES } from '../../utils/sorting';
+import FlagButton from '../FlagButton/FlagButton';
 import styles from './QuizPage.module.css';
 
 const ALL_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -364,6 +365,10 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, onAnswer, onChangeAnswe
                   ))}
                 </div>
               )}
+
+              <div className={styles.flagRow}>
+                <FlagButton wordId={word.id} wordText={word.word} />
+              </div>
             </div>
           </>
         )}

@@ -40,12 +40,13 @@ function computeStats(words) {
     .slice(0, 10)
     .map(w => ({ word: w.word, attempts: w.total_attempts }));
 
-  // Words added by date
+  // Cumulative words added — running total by date
   const dateMap = {};
   words.forEach(w => { if (w.date_added) dateMap[w.date_added] = (dateMap[w.date_added] || 0) + 1; });
+  let running = 0;
   const timeline = Object.entries(dateMap)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, count]) => ({ date: date.slice(5), count })); // MM-DD
+    .map(([date, count]) => { running += count; return { date: date.slice(5), total: running }; });
 
   return { total, mastered, neverReviewed, avgMem, accuracy, byLevel, hardest, mostReviewed, timeline };
 }
@@ -109,9 +110,9 @@ export default function StatsPage({ words }) {
             </ResponsiveContainer>
           </div>
 
-          {/* Words added timeline */}
+          {/* Words added timeline — cumulative */}
           <div className={styles.chartCard}>
-            <h2 className={styles.chartTitle}>Words Added Over Time</h2>
+            <h2 className={styles.chartTitle}>Total Vocabulary Over Time</h2>
             {stats.timeline.length < 2 ? (
               <div className={styles.chartEmpty}>
                 <p>Add words on multiple days to see a timeline.</p>
@@ -134,8 +135,9 @@ export default function StatsPage({ words }) {
                   <Tooltip
                     contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
                     cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '4 2' }}
+                    formatter={v => [v, 'Total words']}
                   />
-                  <Area type="monotone" dataKey="count" stroke="#111111" strokeWidth={2} fill="url(#goldGrad)" />
+                  <Area type="monotone" dataKey="total" stroke="#111111" strokeWidth={2} fill="url(#goldGrad)" />
                 </AreaChart>
               </ResponsiveContainer>
             )}

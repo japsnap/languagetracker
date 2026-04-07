@@ -77,6 +77,42 @@
   line-height: 1.4;
 }
 
+/* ── Profile stats grid ──────────────────────────────────────────────────────── */
+
+.profileGrid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0;
+  border-top: 1px solid var(--border);
+}
+
+.profileStat {
+  flex: 1 1 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 1rem 0.75rem;
+  border-right: 1px solid var(--border);
+  text-align: center;
+}
+.profileStat:last-child { border-right: none; }
+
+.profileStatValue {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.profileStatLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
 /* ── Action button ───────────────────────────────────────────────────────────── */
 
 .actionBtn {

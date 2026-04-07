@@ -163,6 +163,12 @@
 }
 .sceneSelect:focus { border-color: var(--border-focus); }
 
+/* Flag row — spans full width of detail grid */
+.detailActions {
+  flex-basis: 100%;
+  padding-top: 0.15rem;
+}
+
 /* Mastered toggle in detail */
 .masteredToggle {
   background: none;

@@ -84,7 +84,7 @@ function AppShell() {
           {activeTab === 'quiz' && (
             <QuizPage words={words} onUpdateWord={updateWord} />
           )}
-          {activeTab === 'settings' && <SettingsPage words={words} />}
+          {activeTab === 'settings' && <SettingsPage words={words} user={user} />}
         </Suspense>
       </main>
     </div>

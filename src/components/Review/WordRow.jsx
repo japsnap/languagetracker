@@ -1,5 +1,6 @@
 import { memorizationLevel } from '../../utils/vocabulary';
 import { SCENES } from '../../utils/sorting';
+import FlagButton from '../FlagButton/FlagButton';
 import styles from './WordRow.module.css';
 
 const LEVEL_COLORS = {
@@ -126,6 +127,11 @@ export default function WordRow({
                 >
                   {word.mastered ? '✓ Mastered' : 'Mark mastered'}
                 </button>
+              </div>
+
+              {/* Flag */}
+              <div className={styles.detailActions}>
+                <FlagButton wordId={word.id} wordText={word.word} />
               </div>
             </div>
           </td>
