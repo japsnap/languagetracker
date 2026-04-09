@@ -4,6 +4,7 @@
  */
 
 import { supabase } from './supabase';
+import { logEvent } from './events';
 
 const TABLE = 'vocabulary';
 
@@ -39,6 +40,7 @@ export async function addWordDB(wordData) {
     .single();
 
   if (error) throw new Error(error.message);
+  logEvent('word_added', { word: wordData.word, recommended_level: wordData.recommended_level });
   return data;
 }
 

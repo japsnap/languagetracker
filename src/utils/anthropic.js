@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getCachedWord, setCachedWord } from './cache';
+import { logEvent } from './events';
 
 async function buildHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -45,8 +46,10 @@ export async function lookupWord(word, signal) {
   const normalized = word.toLowerCase().trim();
   const cached = await getCachedWord(normalized, 'es-en', 'multi');
   if (cached !== null) {
+    logEvent('word_lookup', { word: normalized, direction: 'es-en', mode: 'multi', cache_hit: true });
     return Array.isArray(cached) ? cached : [cached];
   }
+  logEvent('word_lookup', { word: normalized, direction: 'es-en', mode: 'multi', cache_hit: false });
 
   const text = await callAPI(normalized, 'es-en', 'multi', signal);
   let result;
@@ -71,8 +74,10 @@ export async function lookupWordSingle(word, signal) {
   const normalized = word.toLowerCase().trim();
   const cached = await getCachedWord(normalized, 'es-en', 'single');
   if (cached !== null) {
+    logEvent('word_lookup', { word: normalized, direction: 'es-en', mode: 'single', cache_hit: true });
     return Array.isArray(cached) ? cached[0] : cached;
   }
+  logEvent('word_lookup', { word: normalized, direction: 'es-en', mode: 'single', cache_hit: false });
 
   const text = await callAPI(normalized, 'es-en', 'single', signal);
   let result;
@@ -93,8 +98,10 @@ export async function lookupEnglishWord(word, signal) {
   const normalized = word.toLowerCase().trim();
   const cached = await getCachedWord(normalized, 'en-es', 'multi');
   if (cached !== null) {
+    logEvent('word_lookup', { word: normalized, direction: 'en-es', mode: 'multi', cache_hit: true });
     return Array.isArray(cached) ? cached : [cached];
   }
+  logEvent('word_lookup', { word: normalized, direction: 'en-es', mode: 'multi', cache_hit: false });
 
   const text = await callAPI(normalized, 'en-es', 'multi', signal);
   let result;
@@ -115,8 +122,10 @@ export async function lookupEnglishWordSingle(word, signal) {
   const normalized = word.toLowerCase().trim();
   const cached = await getCachedWord(normalized, 'en-es', 'single');
   if (cached !== null) {
+    logEvent('word_lookup', { word: normalized, direction: 'en-es', mode: 'single', cache_hit: true });
     return Array.isArray(cached) ? cached[0] : cached;
   }
+  logEvent('word_lookup', { word: normalized, direction: 'en-es', mode: 'single', cache_hit: false });
 
   const text = await callAPI(normalized, 'en-es', 'single', signal);
   let result;

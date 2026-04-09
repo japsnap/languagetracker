@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from 'react';
 import { buildPool, pickNext } from '../../utils/quiz';
 import { SCENES } from '../../utils/sorting';
 import FlagButton from '../FlagButton/FlagButton';
+import { logEvent } from '../../utils/events';
 import styles from './QuizPage.module.css';
 
 const ALL_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -92,6 +93,7 @@ export default function QuizPage({ words, onUpdateWord }) {
     (type) => {
       if (!current) return;
       onUpdateWord(current.id, computeChanges(current, type));
+      logEvent('quiz_answer', { word_id: current.id, word: current.word, answer: type });
 
       setSession(prev => {
         const newStreak = type === 'correct' ? prev.streak + 1 : 0;

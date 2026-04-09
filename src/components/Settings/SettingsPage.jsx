@@ -1,4 +1,5 @@
 import styles from './SettingsPage.module.css';
+import { logEvent } from '../../utils/events';
 
 const CSV_COLUMNS = [
   'word', 'part_of_speech', 'meaning', 'example', 'recommended_level',
@@ -49,6 +50,7 @@ export default function SettingsPage({ words, user }) {
     : null;
 
   function handleExportCSV() {
+    logEvent('csv_export', { word_count: words.length });
     const csv = buildCSV(words);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
