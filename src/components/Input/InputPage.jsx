@@ -18,6 +18,7 @@ const EMPTY_FIELDS = {
 
 export default function InputPage({ words, onAddWord, onRemoveWord, preferences, onUpdatePreferences }) {
   const [sourceLang, setSourceLang]       = useState(null); // null = derive from preferences
+  const [targetLang, setTargetLang]       = useState(null); // null = derive from preferences
   const [inputWord, setInputWord]         = useState('');
   const [phase, setPhase]                 = useState('idle'); // idle | loading | preview | candidates | error
   const [fields, setFields]               = useState(EMPTY_FIELDS);
@@ -33,23 +34,24 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
 
   // ── Language derivations ──────────────────────────────────────────────────────
 
-  const primaryTarget  = preferences?.primary_language || 'en';
+  const learningLang   = preferences?.learning_language  || 'es';
+  const primaryLang    = preferences?.primary_language   || 'en';
   const secondaryLangs = preferences?.secondary_languages || [];
 
-  // Source chips = secondary langs + primary lang (deduped, max 5).
-  // If all would be the target (no secondaries set), add 'es' as a fallback.
-  const rawChipCodes   = [...new Set([...secondaryLangs, primaryTarget])];
-  const hasValidSource = rawChipCodes.some(c => c !== primaryTarget);
-  const sourceChipCodes = (hasValidSource ? rawChipCodes : [...rawChipCodes, 'es']).slice(0, 5);
+  // All chip codes = learning + primary + secondaries, deduped
+  const allLangCodes = [...new Set([learningLang, primaryLang, ...secondaryLangs])];
 
-  // Active source: explicit selection (if not conflicting with target), else first valid chip
-  const actualSource = (sourceLang && sourceLang !== primaryTarget)
-    ? sourceLang
-    : (sourceChipCodes.find(c => c !== primaryTarget) ?? 'es');
-  const actualTarget = primaryTarget;
+  // Resolve actual source: explicit state if valid, else learning language
+  const resolvedSource = (sourceLang && allLangCodes.includes(sourceLang)) ? sourceLang : learningLang;
+  // Resolve actual target: explicit state if valid, else primary language
+  const resolvedTarget = (targetLang && allLangCodes.includes(targetLang)) ? targetLang : primaryLang;
+  // Guard: if they're equal, push target to first available alternative
+  const actualSource = resolvedSource;
+  const actualTarget = resolvedTarget !== resolvedSource
+    ? resolvedTarget
+    : (allLangCodes.find(c => c !== resolvedSource) ?? resolvedTarget);
 
   const sourceLangObj = SUPPORTED_LANGUAGES.find(l => l.code === actualSource);
-  const targetLangObj = SUPPORTED_LANGUAGES.find(l => l.code === actualTarget);
 
   const splitActive    = Object.keys(secondaryResults).length > 0 &&
                          (phase === 'preview' || phase === 'candidates');
@@ -60,12 +62,26 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     !secondaryLangs.includes(l.code)
   );
 
+  // ── Reset lookup state helper ─────────────────────────────────────────────────
+
+  function resetLookupState() {
+    setPhase('idle');
+    setFields(EMPTY_FIELDS);
+    setInputWord('');
+    setDuplicate(null);
+    setShowExisting(false);
+    setCandidates([]);
+    setSavedIndices(new Set());
+    setSecondaryResults({});
+    if (abortRef.current) abortRef.current.abort();
+  }
+
   // ── Secondary lookups ─────────────────────────────────────────────────────────
 
-  function fireSecondaryLookups(normalizedWord, sourceCode, langs) {
+  function fireSecondaryLookups(normalizedWord, sourceCode, targetCode, langs) {
     if (!langs || langs.length === 0) return;
     // Skip any lang that duplicates the source or target — saves API calls
-    const filtered = langs.filter(c => c !== sourceCode && c !== actualTarget);
+    const filtered = langs.filter(c => c !== sourceCode && c !== targetCode);
     if (filtered.length === 0) return;
     const initial = {};
     filtered.forEach(c => { initial[c] = { status: 'loading', data: null }; });
@@ -77,20 +93,30 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     });
   }
 
-  // ── Source language selection ─────────────────────────────────────────────────
+  // ── Language selection ────────────────────────────────────────────────────────
 
   function handleSourceChange(code) {
-    if (code === actualSource || code === actualTarget) return;
-    setSourceLang(code);
-    setPhase('idle');
-    setFields(EMPTY_FIELDS);
-    setInputWord('');
-    setDuplicate(null);
-    setShowExisting(false);
-    setCandidates([]);
-    setSavedIndices(new Set());
-    setSecondaryResults({});
-    if (abortRef.current) abortRef.current.abort();
+    if (code === actualSource) return;
+    if (code === actualTarget) {
+      // swap
+      setSourceLang(code);
+      setTargetLang(actualSource);
+    } else {
+      setSourceLang(code);
+    }
+    resetLookupState();
+  }
+
+  function handleTargetChange(code) {
+    if (code === actualTarget) return;
+    if (code === actualSource) {
+      // swap
+      setTargetLang(code);
+      setSourceLang(actualTarget);
+    } else {
+      setTargetLang(code);
+    }
+    resetLookupState();
   }
 
   // ── Lookup (single, default cheap call) ──────────────────────────────────────
@@ -126,7 +152,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
         other_useful_notes: result.other_useful_notes || '',
       });
       setPhase('preview');
-      fireSecondaryLookups(normalized.toLowerCase().trim(), actualSource, secondaryLangs);
+      fireSecondaryLookups(normalized.toLowerCase().trim(), actualSource, actualTarget, secondaryLangs);
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
@@ -137,7 +163,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       setFields({ ...EMPTY_FIELDS, word: term });
       setPhase('error');
     }
-  }, [inputWord, preferences, actualSource, actualTarget, secondaryLangs]);
+  }, [inputWord, actualSource, actualTarget, secondaryLangs]);
 
   // ── See more (array call) ─────────────────────────────────────────────────────
 
@@ -165,7 +191,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       }
       setPhase('error');
     }
-  }, [fields.word, inputWord, preferences, actualSource, actualTarget]);
+  }, [fields.word, inputWord, actualSource, actualTarget]);
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') handleLookup();
@@ -177,15 +203,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   }
 
   function handleDiscard() {
-    setPhase('idle');
-    setFields(EMPTY_FIELDS);
-    setInputWord('');
-    setDuplicate(null);
-    setShowExisting(false);
-    setCandidates([]);
-    setSavedIndices(new Set());
-    setSecondaryResults({});
-    if (abortRef.current) abortRef.current.abort();
+    resetLookupState();
   }
 
   // ── Save preview word ─────────────────────────────────────────────────────────
@@ -223,12 +241,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       setSessionAdded(prev => [saved, ...prev].slice(0, 5));
       setSavedFlash(`"${saved.word}" saved!`);
       setTimeout(() => setSavedFlash(''), 2500);
-      setPhase('idle');
-      setFields(EMPTY_FIELDS);
-      setInputWord('');
-      setDuplicate(null);
-      setShowExisting(false);
-      setSecondaryResults({});
+      resetLookupState();
     } catch (err) {
       setErrorMsg(err.message || 'Failed to save word. Try again.');
       setPhase('error');
@@ -294,7 +307,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
 
   // ── Derived UI strings ────────────────────────────────────────────────────────
 
-  const placeholder    = `Enter a ${sourceLangObj?.label || 'word'} or phrase…`;
+  const placeholder    = `Enter a ${sourceLangObj?.label || 'word'} word or phrase…`;
   const candidatesHint = `${candidates.length} result${candidates.length !== 1 ? 's' : ''} found — save the ones you want`;
   const seeMoreLabel   = 'See more meanings';
 
@@ -310,18 +323,18 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
           <div className={styles.langRow}>
             <span className={styles.langRowLabel}>I'm looking up:</span>
             <div className={styles.chipGroup}>
-              {sourceChipCodes.map(code => {
+              {allLangCodes.map(code => {
                 const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
                 if (!lang) return null;
-                const isTarget  = code === actualTarget;
-                const isActive  = code === actualSource;
+                const isDisabled = code === actualTarget;
+                const isActive   = code === actualSource;
                 return (
                   <button
                     key={code}
-                    className={`${styles.langChip} ${isActive ? styles.langChipActive : ''} ${isTarget ? styles.langChipDisabled : ''}`}
+                    className={`${styles.langChip} ${isActive ? styles.langChipActive : ''} ${isDisabled ? styles.langChipDisabled : ''}`}
                     onClick={() => handleSourceChange(code)}
-                    disabled={isTarget}
-                    title={isTarget ? `${lang.label} is your target language` : lang.label}
+                    disabled={isDisabled}
+                    title={lang.label}
                   >
                     {lang.flag} {code.toUpperCase()}
                   </button>
@@ -331,9 +344,25 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
           </div>
           <div className={styles.langRow}>
             <span className={styles.langRowLabel}>Show meaning in:</span>
-            <span className={styles.langTarget}>
-              {targetLangObj?.flag} {targetLangObj?.label}
-            </span>
+            <div className={styles.chipGroup}>
+              {allLangCodes.map(code => {
+                const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
+                if (!lang) return null;
+                const isDisabled = code === actualSource;
+                const isActive   = code === actualTarget;
+                return (
+                  <button
+                    key={code}
+                    className={`${styles.langChip} ${isActive ? styles.langChipActive : ''} ${isDisabled ? styles.langChipDisabled : ''}`}
+                    onClick={() => handleTargetChange(code)}
+                    disabled={isDisabled}
+                    title={lang.label}
+                  >
+                    {lang.flag} {code.toUpperCase()}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 

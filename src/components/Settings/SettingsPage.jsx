@@ -58,6 +58,10 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
     onUpdatePreferences({ primary_language: code, secondary_languages: secondary });
   }
 
+  function handleLearningLangChange(code) {
+    onUpdatePreferences({ learning_language: code });
+  }
+
   function handleSecondaryToggle(code) {
     const current = preferences.secondary_languages || [];
     if (current.includes(code)) {
@@ -131,6 +135,25 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
                         {lang.flag} {lang.label}
                       </option>
                     ))}
+                  </select>
+                </div>
+                <div className={styles.row}>
+                  <div className={styles.rowInfo}>
+                    <span className={styles.rowLabel}>Learning Language</span>
+                    <span className={styles.rowDesc}>The language you are currently learning. Sets your default input on the Input page.</span>
+                  </div>
+                  <select
+                    className={styles.langSelect}
+                    value={preferences.learning_language || 'es'}
+                    onChange={e => handleLearningLangChange(e.target.value)}
+                  >
+                    {SUPPORTED_LANGUAGES
+                      .filter(l => l.code !== preferences.primary_language)
+                      .map(lang => (
+                        <option key={lang.code} value={lang.code}>
+                          {lang.flag} {lang.label}
+                        </option>
+                      ))}
                   </select>
                 </div>
                 <div className={styles.langSecondaryRow}>

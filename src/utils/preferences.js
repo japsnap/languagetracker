@@ -14,8 +14,12 @@ export const SUPPORTED_LANGUAGES = [
   { code: 'it', label: 'Italian',    flag: '🇮🇹' },
 ];
 
+// Supabase migration (run once):
+// ALTER TABLE user_preferences ADD COLUMN learning_language text DEFAULT 'es';
+
 const DEFAULT_PREFERENCES = {
   primary_language: 'en',
+  learning_language: 'es',
   secondary_languages: [],
 };
 
