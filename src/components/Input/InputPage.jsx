@@ -16,19 +16,18 @@ const EMPTY_FIELDS = {
   other_useful_notes: '',
 };
 
-export default function InputPage({ words, onAddWord, onRemoveWord, preferences, onUpdatePreferences }) {
-  const [sourceLang, setSourceLang]       = useState(null); // null = derive from preferences
-  const [targetLang, setTargetLang]       = useState(null); // null = derive from preferences
-  const [inputWord, setInputWord]         = useState('');
-  const [phase, setPhase]                 = useState('idle'); // idle | loading | preview | candidates | error
-  const [fields, setFields]               = useState(EMPTY_FIELDS);
-  const [candidates, setCandidates]       = useState([]);
-  const [savedIndices, setSavedIndices]   = useState(new Set());
-  const [errorMsg, setErrorMsg]           = useState('');
-  const [duplicate, setDuplicate]         = useState(null);
-  const [showExisting, setShowExisting]   = useState(false);
-  const [sessionAdded, setSessionAdded]   = useState([]);
-  const [savedFlash, setSavedFlash]       = useState('');
+export default function InputPage({ words, onAddWord, onRemoveWord, preferences, onUpdatePreferences, onNavigate }) {
+  const [inputLang, setInputLang]               = useState(null); // null = derive from preferences
+  const [inputWord, setInputWord]               = useState('');
+  const [phase, setPhase]                       = useState('idle'); // idle | loading | preview | candidates | error
+  const [fields, setFields]                     = useState(EMPTY_FIELDS);
+  const [candidates, setCandidates]             = useState([]);
+  const [savedIndices, setSavedIndices]         = useState(new Set());
+  const [errorMsg, setErrorMsg]                 = useState('');
+  const [duplicate, setDuplicate]               = useState(null);
+  const [showExisting, setShowExisting]         = useState(false);
+  const [sessionAdded, setSessionAdded]         = useState([]);
+  const [savedFlash, setSavedFlash]             = useState('');
   const [secondaryResults, setSecondaryResults] = useState({}); // { [langCode]: { status, data } }
   const abortRef = useRef(null);
 
@@ -38,31 +37,27 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   const primaryLang    = preferences?.primary_language   || 'en';
   const secondaryLangs = preferences?.secondary_languages || [];
 
-  // All chip codes = learning + primary + secondaries, deduped
+  // Chip pool = learning + primary + secondaries, deduped
   const allLangCodes = [...new Set([learningLang, primaryLang, ...secondaryLangs])];
 
-  // Resolve actual source: explicit state if valid, else learning language
-  const resolvedSource = (sourceLang && allLangCodes.includes(sourceLang)) ? sourceLang : learningLang;
-  // Resolve actual target: explicit state if valid, else primary language
-  const resolvedTarget = (targetLang && allLangCodes.includes(targetLang)) ? targetLang : primaryLang;
-  // Guard: if they're equal, push target to first available alternative
-  const actualSource = resolvedSource;
-  const actualTarget = resolvedTarget !== resolvedSource
-    ? resolvedTarget
-    : (allLangCodes.find(c => c !== resolvedSource) ?? resolvedTarget);
+  // Active input language: explicit state if valid, else fall back to learning language
+  const actualInputLang = (inputLang && allLangCodes.includes(inputLang)) ? inputLang : learningLang;
 
-  const sourceLangObj = SUPPORTED_LANGUAGES.find(l => l.code === actualSource);
+  const inputLangObj    = SUPPORTED_LANGUAGES.find(l => l.code === actualInputLang);
+  const learningLangObj = SUPPORTED_LANGUAGES.find(l => l.code === learningLang);
+  const primaryLangObj  = SUPPORTED_LANGUAGES.find(l => l.code === primaryLang);
 
-  const splitActive    = Object.keys(secondaryResults).length > 0 &&
-                         (phase === 'preview' || phase === 'candidates');
+  const splitActive = Object.keys(secondaryResults).length > 0 &&
+                      (phase === 'preview' || phase === 'candidates');
 
   const availableToAdd = SUPPORTED_LANGUAGES.filter(l =>
-    l.code !== actualSource &&
-    l.code !== actualTarget &&
+    l.code !== actualInputLang &&
+    l.code !== learningLang &&
+    l.code !== primaryLang &&
     !secondaryLangs.includes(l.code)
   );
 
-  // ── Reset lookup state helper ─────────────────────────────────────────────────
+  // ── Reset lookup state ────────────────────────────────────────────────────────
 
   function resetLookupState() {
     setPhase('idle');
@@ -77,45 +72,29 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   }
 
   // ── Secondary lookups ─────────────────────────────────────────────────────────
+  // Always fire with the result word (in learning language) as input,
+  // using learningLang as source, for each secondary language.
 
-  function fireSecondaryLookups(normalizedWord, sourceCode, targetCode, langs) {
+  function fireSecondaryLookups(wordInLearningLang, langs) {
     if (!langs || langs.length === 0) return;
-    // Skip any lang that duplicates the source or target — saves API calls
-    const filtered = langs.filter(c => c !== sourceCode && c !== targetCode);
+    // Skip learning and primary — they're already shown in the main result
+    const filtered = langs.filter(c => c !== learningLang && c !== primaryLang);
     if (filtered.length === 0) return;
     const initial = {};
     filtered.forEach(c => { initial[c] = { status: 'loading', data: null }; });
     setSecondaryResults(initial);
     filtered.forEach(c => {
-      lookupSecondary(normalizedWord, sourceCode, c, null)
+      lookupSecondary(wordInLearningLang, learningLang, c, null)
         .then(data => setSecondaryResults(prev => ({ ...prev, [c]: { status: 'done', data } })))
         .catch(() => setSecondaryResults(prev => ({ ...prev, [c]: { status: 'error', data: null } })));
     });
   }
 
-  // ── Language selection ────────────────────────────────────────────────────────
+  // ── Input language selection ──────────────────────────────────────────────────
 
-  function handleSourceChange(code) {
-    if (code === actualSource) return;
-    if (code === actualTarget) {
-      // swap
-      setSourceLang(code);
-      setTargetLang(actualSource);
-    } else {
-      setSourceLang(code);
-    }
-    resetLookupState();
-  }
-
-  function handleTargetChange(code) {
-    if (code === actualTarget) return;
-    if (code === actualSource) {
-      // swap
-      setTargetLang(code);
-      setSourceLang(actualTarget);
-    } else {
-      setTargetLang(code);
-    }
+  function handleInputLangChange(code) {
+    if (code === actualInputLang) return;
+    setInputLang(code);
     resetLookupState();
   }
 
@@ -139,20 +118,20 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     setSecondaryResults({});
 
     try {
-      const result = await lookupWordSingle(term, actualSource, actualTarget, controller.signal);
+      const result = await lookupWordSingle(term, actualInputLang, learningLang, primaryLang, controller.signal);
       clearTimeout(timeoutId);
-      const normalized = result.word || term;
+      const resultWord = result.word || term;
       setFields({
-        word:               normalized,
-        part_of_speech:     result.part_of_speech    || '',
-        meaning:            result.meaning           || '',
-        example:            result.example           || '',
-        recommended_level:  result.recommended_level || '',
-        related_words:      result.related_words     || '',
+        word:               resultWord,
+        part_of_speech:     result.part_of_speech     || '',
+        meaning:            result.meaning            || '',
+        example:            result.example            || '',
+        recommended_level:  result.recommended_level  || '',
+        related_words:      result.related_words      || '',
         other_useful_notes: result.other_useful_notes || '',
       });
       setPhase('preview');
-      fireSecondaryLookups(normalized.toLowerCase().trim(), actualSource, actualTarget, secondaryLangs);
+      fireSecondaryLookups(resultWord.toLowerCase().trim(), secondaryLangs);
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
@@ -163,7 +142,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       setFields({ ...EMPTY_FIELDS, word: term });
       setPhase('error');
     }
-  }, [inputWord, actualSource, actualTarget, secondaryLangs]);
+  }, [inputWord, actualInputLang, learningLang, primaryLang, secondaryLangs]);
 
   // ── See more (array call) ─────────────────────────────────────────────────────
 
@@ -178,7 +157,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     setSavedIndices(new Set());
 
     try {
-      const results = await lookupWord(fields.word || inputWord, actualSource, actualTarget, controller.signal);
+      const results = await lookupWord(fields.word || inputWord, actualInputLang, learningLang, primaryLang, controller.signal);
       clearTimeout(timeoutId);
       setCandidates(results);
       setPhase('candidates');
@@ -191,7 +170,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       }
       setPhase('error');
     }
-  }, [fields.word, inputWord, actualSource, actualTarget]);
+  }, [fields.word, inputWord, actualInputLang, learningLang, primaryLang]);
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') handleLookup();
@@ -286,11 +265,11 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   // ── Add secondary language ────────────────────────────────────────────────────
 
   function handleAddSecondaryLanguage(code) {
-    if (!onUpdatePreferences || code === actualSource || code === actualTarget) return;
+    if (!onUpdatePreferences) return;
     onUpdatePreferences({ secondary_languages: [...secondaryLangs, code] });
     if ((phase === 'preview' || phase === 'candidates') && fields.word) {
       setSecondaryResults(prev => ({ ...prev, [code]: { status: 'loading', data: null } }));
-      lookupSecondary(fields.word.toLowerCase().trim(), actualSource, code, null)
+      lookupSecondary(fields.word.toLowerCase().trim(), learningLang, code, null)
         .then(data => setSecondaryResults(prev => ({ ...prev, [code]: { status: 'done', data } })))
         .catch(() => setSecondaryResults(prev => ({ ...prev, [code]: { status: 'error', data: null } })));
     }
@@ -307,7 +286,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
 
   // ── Derived UI strings ────────────────────────────────────────────────────────
 
-  const placeholder    = `Enter a ${sourceLangObj?.label || 'word'} word or phrase…`;
+  const placeholder    = `Enter a ${inputLangObj?.label || 'word'} word or phrase…`;
   const candidatesHint = `${candidates.length} result${candidates.length !== 1 ? 's' : ''} found — save the ones you want`;
   const seeMoreLabel   = 'See more meanings';
 
@@ -326,14 +305,12 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
               {allLangCodes.map(code => {
                 const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
                 if (!lang) return null;
-                const isDisabled = code === actualTarget;
-                const isActive   = code === actualSource;
+                const isActive = code === actualInputLang;
                 return (
                   <button
                     key={code}
-                    className={`${styles.langChip} ${isActive ? styles.langChipActive : ''} ${isDisabled ? styles.langChipDisabled : ''}`}
-                    onClick={() => handleSourceChange(code)}
-                    disabled={isDisabled}
+                    className={`${styles.langChip} ${isActive ? styles.langChipActive : ''}`}
+                    onClick={() => handleInputLangChange(code)}
                     title={lang.label}
                   >
                     {lang.flag} {code.toUpperCase()}
@@ -342,37 +319,17 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
               })}
             </div>
           </div>
-          <div className={styles.swapRow}>
-            <button
-              className={styles.swapBtn}
-              onClick={() => { setSourceLang(actualTarget); setTargetLang(actualSource); resetLookupState(); }}
-              title="Swap languages"
-              aria-label="Swap source and target languages"
-            >
-              ⇅
-            </button>
-          </div>
-          <div className={styles.langRow}>
-            <span className={styles.langRowLabel}>Show meaning in:</span>
-            <div className={styles.chipGroup}>
-              {allLangCodes.map(code => {
-                const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
-                if (!lang) return null;
-                const isDisabled = code === actualSource;
-                const isActive   = code === actualTarget;
-                return (
-                  <button
-                    key={code}
-                    className={`${styles.langChip} ${isActive ? styles.langChipActive : ''} ${isDisabled ? styles.langChipDisabled : ''}`}
-                    onClick={() => handleTargetChange(code)}
-                    disabled={isDisabled}
-                    title={lang.label}
-                  >
-                    {lang.flag} {code.toUpperCase()}
-                  </button>
-                );
-              })}
-            </div>
+          <div className={styles.langInfo}>
+            <span>
+              Learning: {learningLangObj?.flag} {learningLangObj?.label}
+              {' '}·{' '}
+              Meaning in: {primaryLangObj?.flag} {primaryLangObj?.label}
+            </span>
+            {onNavigate && (
+              <button className={styles.langInfoLink} onClick={() => onNavigate('settings')}>
+                Change in Settings
+              </button>
+            )}
           </div>
         </div>
 

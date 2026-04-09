@@ -20,20 +20,15 @@ async function buildHeaders() {
 }
 
 /**
- * Send { word, source_language, target_language, mode } to the serverless proxy.
+ * Low-level API call. Accepts a pre-built payload object.
  * All prompt/model details are handled server-side.
  */
-async function callAPI(word, sourceLanguage, targetLanguage, mode, signal) {
+async function callAPI(payload, signal) {
   const response = await fetch('/api/anthropic', {
     method: 'POST',
     signal,
     headers: await buildHeaders(),
-    body: JSON.stringify({
-      word,
-      source_language: sourceLanguage,
-      target_language: targetLanguage,
-      mode,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
@@ -47,19 +42,28 @@ async function callAPI(word, sourceLanguage, targetLanguage, mode, signal) {
 }
 
 /**
- * Look up a word: returns an array of up to 3 full-depth result objects.
- * source/target are language codes e.g. 'es', 'en', 'ja'.
+ * Look up a word (multi — up to 3 meanings).
+ * Returns an array of full result objects.
+ *
+ * @param {string} word             - raw input from the user
+ * @param {string} inputLanguage    - language the user typed in
+ * @param {string} learningLanguage - word/example/related_words returned in this language
+ * @param {string} primaryLanguage  - meaning/part_of_speech/notes returned in this language
+ * @param {AbortSignal} signal
  */
-export async function lookupWord(word, sourceLanguage, targetLanguage, signal) {
+export async function lookupWord(word, inputLanguage, learningLanguage, primaryLanguage, signal) {
   const normalized = word.toLowerCase().trim();
-  const cached = await getCachedWord(normalized, sourceLanguage, 'multi', targetLanguage);
+  const cached = await getCachedWord(normalized, inputLanguage, learningLanguage, primaryLanguage, 'multi');
   if (cached !== null) {
-    logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'multi', cache_hit: true });
+    logEvent('word_lookup', { word: normalized, input: inputLanguage, learning: learningLanguage, primary: primaryLanguage, mode: 'multi', cache_hit: true });
     return Array.isArray(cached) ? cached : [cached];
   }
-  logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'multi', cache_hit: false });
+  logEvent('word_lookup', { word: normalized, input: inputLanguage, learning: learningLanguage, primary: primaryLanguage, mode: 'multi', cache_hit: false });
 
-  const text = await callAPI(normalized, sourceLanguage, targetLanguage, 'multi', signal);
+  const text = await callAPI(
+    { word: normalized, input_language: inputLanguage, learning_language: learningLanguage, primary_language: primaryLanguage, mode: 'multi' },
+    signal,
+  );
   let result;
   try {
     const parsed = JSON.parse(text);
@@ -73,24 +77,27 @@ export async function lookupWord(word, sourceLanguage, targetLanguage, signal) {
       else throw new Error('Could not parse AI response. Try again or fill fields manually.');
     }
   }
-  await setCachedWord(normalized, sourceLanguage, 'multi', result, targetLanguage);
+  await setCachedWord(normalized, inputLanguage, learningLanguage, primaryLanguage, 'multi', result);
   return result;
 }
 
 /**
- * Look up a word: returns one full-depth result object (most common meaning).
- * source/target are language codes e.g. 'es', 'en', 'ja'.
+ * Look up a word (single — most common meaning).
+ * Returns one full result object.
  */
-export async function lookupWordSingle(word, sourceLanguage, targetLanguage, signal) {
+export async function lookupWordSingle(word, inputLanguage, learningLanguage, primaryLanguage, signal) {
   const normalized = word.toLowerCase().trim();
-  const cached = await getCachedWord(normalized, sourceLanguage, 'single', targetLanguage);
+  const cached = await getCachedWord(normalized, inputLanguage, learningLanguage, primaryLanguage, 'single');
   if (cached !== null) {
-    logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'single', cache_hit: true });
+    logEvent('word_lookup', { word: normalized, input: inputLanguage, learning: learningLanguage, primary: primaryLanguage, mode: 'single', cache_hit: true });
     return Array.isArray(cached) ? cached[0] : cached;
   }
-  logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'single', cache_hit: false });
+  logEvent('word_lookup', { word: normalized, input: inputLanguage, learning: learningLanguage, primary: primaryLanguage, mode: 'single', cache_hit: false });
 
-  const text = await callAPI(normalized, sourceLanguage, targetLanguage, 'single', signal);
+  const text = await callAPI(
+    { word: normalized, input_language: inputLanguage, learning_language: learningLanguage, primary_language: primaryLanguage, mode: 'single' },
+    signal,
+  );
   let result;
   try {
     const parsed = JSON.parse(text);
@@ -100,22 +107,28 @@ export async function lookupWordSingle(word, sourceLanguage, targetLanguage, sig
     if (match) { result = JSON.parse(match[0]); }
     else throw new Error('Could not parse AI response. Try again or fill fields manually.');
   }
-  await setCachedWord(normalized, sourceLanguage, 'single', result, targetLanguage);
+  await setCachedWord(normalized, inputLanguage, learningLanguage, primaryLanguage, 'single', result);
   return result;
 }
 
 /**
  * Brief secondary translation: returns { word_in_target, meaning_brief, example_brief }.
- * Used for secondary language mini-cards alongside the primary result.
+ * Independent of the three-role system — takes explicit source and target codes.
+ * For secondary mini-cards: source = learning language, target = secondary language code.
  */
 export async function lookupSecondary(word, sourceLanguage, targetLanguage, signal) {
   const normalized = word.toLowerCase().trim();
-  const cached = await getCachedWord(normalized, sourceLanguage, 'secondary', targetLanguage);
+  // Cache key: input_language unused for secondary; use sourceLanguage for both input and learning slots
+  const cached = await getCachedWord(normalized, sourceLanguage, sourceLanguage, targetLanguage, 'secondary');
   if (cached !== null) {
     return cached;
   }
 
-  const text = await callAPI(normalized, sourceLanguage, targetLanguage, 'secondary', signal);
+  // Server: secondary mode uses learning_language as source, primary_language as target
+  const text = await callAPI(
+    { word: normalized, learning_language: sourceLanguage, primary_language: targetLanguage, mode: 'secondary' },
+    signal,
+  );
   let result;
   try {
     result = JSON.parse(text);
@@ -124,6 +137,6 @@ export async function lookupSecondary(word, sourceLanguage, targetLanguage, sign
     if (match) { result = JSON.parse(match[0]); }
     else throw new Error('Could not parse secondary lookup response.');
   }
-  await setCachedWord(normalized, sourceLanguage, 'secondary', result, targetLanguage);
+  await setCachedWord(normalized, sourceLanguage, sourceLanguage, targetLanguage, 'secondary', result);
   return result;
 }

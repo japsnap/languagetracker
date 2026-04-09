@@ -3,8 +3,13 @@
  *
  * Security model:
  *   - Requires a valid Supabase session token (Authorization: Bearer <token>)
- *   - Client sends only { word, source_language, target_language, mode }
+ *   - Client sends only { word, input_language, learning_language, primary_language, mode }
  *     — all prompt/model details are hardcoded here and never controllable by the client
+ *
+ * Three-role language system:
+ *   - input_language:    the language the user typed in
+ *   - learning_language: word, example, related_words are returned in this language
+ *   - primary_language:  meaning, part_of_speech, notes are returned in this language
  *
  * To switch AI provider: update PROVIDER + the buildUpstreamRequest function.
  */
@@ -41,25 +46,26 @@ const VALID_CODES = new Set(Object.keys(LANGUAGE_NAMES));
 // Dynamic prompt builders — never sent to or modifiable by the client
 // ---------------------------------------------------------------------------
 
-function buildPrimaryPrompt(sourceLang, targetLang, mode) {
-  const source = LANGUAGE_NAMES[sourceLang];
-  const target = LANGUAGE_NAMES[targetLang];
-  const shape = mode === 'multi'
+function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
+  const input    = LANGUAGE_NAMES[inputLang];
+  const learning = LANGUAGE_NAMES[learningLang];
+  const primary  = LANGUAGE_NAMES[primaryLang];
+  const shape  = mode === 'multi'
     ? 'a valid JSON array of up to 3 items'
     : 'a valid JSON object';
   const suffix = mode === 'multi'
     ? '\n\nReturn between 1 and 3 items. Only include genuinely different meanings or usages.'
     : '';
-  return `You are a multilingual language expert. Given a word or phrase in ${source}, respond with ONLY ${shape} — no markdown fences, no explanation. Provide the meaning in ${target}. If the input has accent or spelling errors, correct them in the word field (e.g. espanol → español, nino → niño). Use exactly these fields:
+  return `You are a multilingual language expert. The user has entered a word or phrase in ${input}. Respond with ONLY ${shape} — no markdown fences, no explanation. The word field must be in ${learning}. The meaning, part_of_speech, and notes must be in ${primary}. The example sentence and related words must be in ${learning}. If the input has accent or spelling errors, correct them. Use exactly these fields:
 
 {
-  "word": "the correctly spelled word in ${source}",
-  "part_of_speech": "noun / verb / adjective / phrase / etc.",
-  "meaning": "clear meaning in ${target}",
-  "example": "a natural sentence in ${source} using the word",
+  "word": "the word translated into ${learning} (corrected spelling if needed)",
+  "part_of_speech": "in ${primary}: noun / verb / adjective / phrase / etc.",
+  "meaning": "clear meaning in ${primary}",
+  "example": "a natural sentence in ${learning} using the word",
   "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
-  "related_words": "comma-separated related words in ${source}, or empty string",
-  "other_useful_notes": "grammar notes, usage tips in ${target}, or empty string"
+  "related_words": "comma-separated related words in ${learning}, or empty string",
+  "other_useful_notes": "grammar notes, usage tips in ${primary}, or empty string"
 }${suffix}`;
 }
 
@@ -120,20 +126,22 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Validate client payload — only these four fields are accepted
-  const { word, source_language, target_language, mode } = req.body ?? {};
+  // Validate client payload
+  const { word, input_language, learning_language, primary_language, mode } = req.body ?? {};
   if (
     typeof word !== 'string' || !word.trim() ||
-    !VALID_CODES.has(source_language) ||
-    !VALID_CODES.has(target_language) ||
+    (mode !== 'secondary' && !VALID_CODES.has(input_language)) ||
+    !VALID_CODES.has(learning_language) ||
+    !VALID_CODES.has(primary_language) ||
     (mode !== 'single' && mode !== 'multi' && mode !== 'secondary')
   ) {
     return res.status(400).json({ error: 'Invalid request payload' });
   }
 
+  // For secondary mode, input_language doubles as source, learning_language as target
   const systemPrompt = mode === 'secondary'
-    ? buildSecondaryPrompt(source_language, target_language)
-    : buildPrimaryPrompt(source_language, target_language, mode);
+    ? buildSecondaryPrompt(learning_language, primary_language)
+    : buildPrimaryPrompt(input_language, learning_language, primary_language, mode);
   const maxTokens = MAX_TOKENS[mode];
 
   const apiKey = process.env[PROVIDER.apiKeyEnvVar];

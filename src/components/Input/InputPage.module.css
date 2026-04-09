@@ -653,41 +653,29 @@
   cursor: default;
 }
 
-.swapRow {
+.langInfo {
   display: flex;
-  justify-content: flex-start;
-  padding-left: 110px; /* align with chip group, after label width */
+  align-items: center;
+  gap: 0.75rem;
+  padding-left: 110px; /* align with chip group */
+  font-size: 0.76rem;
+  color: var(--text-muted);
 }
 
-.swapBtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  min-width: 44px;
-  min-height: 44px;
-  border: 1px solid var(--border);
-  border-radius: 50%;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 1rem;
-  cursor: pointer;
-  transition: border-color 0.15s, color 0.15s, background 0.15s;
-  /* center the icon visually within the larger touch target */
+.langInfoLink {
+  background: none;
+  border: none;
   padding: 0;
-  position: relative;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.15s;
+  white-space: nowrap;
 }
-.swapBtn::before {
-  content: '';
-  position: absolute;
-  inset: -8px;
-}
-.swapBtn:hover {
-  border-color: var(--border-strong);
-  color: var(--text-secondary);
-  background: var(--bg-card);
-}
+.langInfoLink:hover { color: var(--text-secondary); }
 
 .langTarget {
   font-size: 0.82rem;
@@ -729,5 +717,5 @@
   .dirBtn { flex: 1; text-align: center; }
   .langChip { font-size: 0.78rem; padding: 0.25rem 0.6rem; min-height: 44px; }
   .langRowLabel { min-width: 90px; font-size: 0.68rem; }
-  .swapRow { padding-left: 90px; }
+  .langInfo { padding-left: 90px; }
 }
