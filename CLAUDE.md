@@ -12,7 +12,11 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 ## Architecture
 - All user data filtered by user_id via Supabase RLS
 - API calls proxied through /api/anthropic.js (Vercel serverless)
-- Lazy-loaded tab components (Input, Review, Quiz, Stats, Settings)
+- Lazy-loaded tab components (Input, Review, Quiz, Stats, Settings, Admin)
+- Three-role language system: input_language / learning_language / primary_language
+- Word cache in Supabase (word_cache table) keyed on all three language roles + mode
+- Event logging via src/utils/events.js → user_events table (fire-and-forget)
+- User preferences in user_preferences table (primary, learning, secondary languages)
 
 ## Coding Rules
 - Structure all changes so features can be added later without rewriting
@@ -33,7 +37,14 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 ## Current State
 - Auth: Google OAuth via Supabase, password gate removed
 - ~784 words in Supabase, backfilled to owner user_id
-- user_events table exists but not yet populated
-- Tabs: Input, Review, Quiz, Stats, Settings (CSV export)
+- Tabs: Input, Review, Quiz, Stats, Settings, Admin (owner-only)
+- 11 supported languages: EN ES JA DE KO ZH UR HI PT FR IT
+- Three-role language system live on Input page (input / learning / primary)
+- User preferences table: primary_language, learning_language, secondary_languages
+- word_cache table: caches API responses by (input_word, input_language, learning_language, primary_language, mode)
+- user_events table: populated — word_lookup (cache_hit), word_added, quiz_answer, csv_export
+- Romanization fields on vocabulary table: romanization, kana_reading (populated for JA/KO/ZH/UR/HI)
+- Romanization shown on Input (PreviewCard, CandidateCard, mini-cards), Review (word cell), Quiz (revealed only)
+- Production sourcemaps disabled
 
 @CHANGELOG.md

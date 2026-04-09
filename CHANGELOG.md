@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-04-10
+
+- **Three-role language system** — word lookup now separates three distinct roles: *input language* (what the user types), *learning language* (determines word, example, related words in the response), and *primary language* (determines meaning, part of speech, notes). Any input language produces output anchored to the learning language. Client sends `{ word, input_language, learning_language, primary_language, mode }`; all prompt logic is server-side.
+- **User preferences** — new `user_preferences` Supabase table (`primary_language`, `learning_language`, `secondary_languages`). Defaults: primary=EN, learning=ES. Loaded on login, saved optimistically. Settings tab exposes all three with ordered UI: Learning → Primary → Secondary.
+- **Dynamic language chip selector** — Input page chip row replaces the old direction toggle. Chips built from `[learning, primary, ...secondaries]` deduped. Selecting a chip sets the input language; learning and primary are shown as a static info label with a "Change in Settings" link.
+- **Secondary language mini-cards** — after a primary lookup, parallel `lookupSecondary` calls fire for each secondary language (filtered to exclude source and target). Results appear in a 65/35 split column alongside the main card. New languages can be added inline.
+- **11 supported languages** — EN 🇺🇸, ES 🇪🇸, JA 🇯🇵, DE 🇩🇪, KO 🇰🇷, ZH 🇨🇳, UR 🇵🇰, HI 🇮🇳, PT 🇵🇹, FR 🇫🇷, IT 🇮🇹.
+- **Romanization for non-Latin scripts** — when `learning_language` is JA/KO/ZH/UR/HI, the server prompt requests `romanization` (romaji, pinyin, or romanized form) and, for Japanese only, `kana_reading`. Displayed below the word on Input page (PreviewCard, CandidateCard, SecondaryMiniCard), Review page (word cell + expanded detail), and Quiz page (revealed phase only — hidden during question to preserve challenge). Fields saved to vocabulary as `romanization` and `kana_reading` columns.
+- **Shared word cache** — new `word_cache` Supabase table. Responses are cached before hitting the Anthropic API and reused across all users. Cache key: `(input_word, input_language, learning_language, primary_language, mode)`. Cache hits logged to `user_events`. Secondary lookups also cached.
+- **Event logging** — `user_events` table now populated. Events: `word_lookup` (with `cache_hit` flag), `word_added`, `quiz_answer`, `csv_export`. All fire-and-forget via `src/utils/events.js`.
+- **Admin dashboard** — hidden tab visible only to `wikipanna@gmail.com`. Four sections: overview stats (distinct users, total words, lookups today, cache hit %, top words), recent activity feed, flagged content queue (resolve/dismiss), popular words. Logic in `src/utils/admin.js`, component in `src/components/Admin/AdminPage.jsx`.
+- **Production sourcemaps disabled** — `vite.config.js` sets `build: { sourcemap: false }`.
+- **word_cache schema** — updated from `(input_word, direction, mode, target_language)` to `(input_word, input_language, learning_language, primary_language, mode)` to support the three-role system. Old entries become cache misses, no errors.
+- **UI polish** — Settings language order changed to Learning → Primary → Secondary. Input page label changed from "I'm looking up:" to "Type in:". Language info label made more prominent (1rem, medium weight). Mobile: info label breaks into two lines, separator hidden. American flag 🇺🇸 for English replacing 🇬🇧.
+
 ## 2026-04-08 (continued)
 
 - **Cumulative vocabulary graph** — "Words Added Over Time" chart in Stats now shows a running total instead of daily counts, so a bulk import day no longer dwarfs everything else. Chart always trends upward.
