@@ -1,4 +1,5 @@
 import styles from './Navigation.module.css';
+import { ADMIN_EMAIL } from '../../utils/admin';
 
 const TABS = [
   { id: 'input',    label: 'Input' },
@@ -30,6 +31,14 @@ export default function Navigation({ activeTab, onTabChange, user, onSignOut }) 
       {user && (
         <div className={styles.userArea}>
           <span className={styles.userEmail}>{user.email}</span>
+          {user.email === ADMIN_EMAIL && (
+            <button
+              className={`${styles.adminBtn} ${activeTab === 'admin' ? styles.adminBtnActive : ''}`}
+              onClick={() => onTabChange(activeTab === 'admin' ? 'input' : 'admin')}
+            >
+              Admin
+            </button>
+          )}
           <button className={styles.signOutBtn} onClick={onSignOut}>
             Sign out
           </button>

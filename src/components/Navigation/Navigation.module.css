@@ -85,6 +85,29 @@
   max-width: 160px;
 }
 
+.adminBtn {
+  padding: 0.3rem 0.75rem;
+  background: transparent;
+  border: 1px solid #555;
+  border-radius: var(--radius-md);
+  color: #aaa;
+  font-size: 0.78rem;
+  font-family: var(--font-body);
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.adminBtn:hover {
+  color: #fff;
+  border-color: #fff;
+}
+.adminBtnActive {
+  color: #fff;
+  border-color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
 .signOutBtn {
   padding: 0.3rem 0.75rem;
   background: transparent;

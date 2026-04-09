@@ -11,6 +11,7 @@ const StatsPage    = lazy(() => import('./components/Stats/StatsPage'));
 const InputPage    = lazy(() => import('./components/Input/InputPage'));
 const QuizPage     = lazy(() => import('./components/Quiz/QuizPage'));
 const SettingsPage = lazy(() => import('./components/Settings/SettingsPage'));
+const AdminPage    = lazy(() => import('./components/Admin/AdminPage'));
 
 export default function App() {
   return (
@@ -85,6 +86,7 @@ function AppShell() {
             <QuizPage words={words} onUpdateWord={updateWord} />
           )}
           {activeTab === 'settings' && <SettingsPage words={words} user={user} />}
+          {activeTab === 'admin'    && <AdminPage user={user} />}
         </Suspense>
       </main>
     </div>
