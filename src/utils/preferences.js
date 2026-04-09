@@ -1,7 +1,7 @@
 import { supabase } from './supabase';
 
 export const SUPPORTED_LANGUAGES = [
-  { code: 'en', label: 'English',    flag: '🇬🇧' },
+  { code: 'en', label: 'English',    flag: '🇺🇸' },
   { code: 'es', label: 'Spanish',    flag: '🇪🇸' },
   { code: 'ja', label: 'Japanese',   flag: '🇯🇵' },
   { code: 'de', label: 'German',     flag: '🇩🇪' },

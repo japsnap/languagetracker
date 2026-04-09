@@ -585,6 +585,81 @@
   padding: 0.4rem 0;
 }
 
+/* ── Language chip selector ──────────────────────────────────────────────────── */
+
+.langSelector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.langRow {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.langRowLabel {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  min-width: 110px;
+}
+
+.chipGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.langChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  min-height: 32px;
+  white-space: nowrap;
+}
+.langChip:hover:not(:disabled) {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+}
+
+.langChipActive {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: #fff;
+}
+.langChipActive:hover:not(:disabled) {
+  opacity: 0.88;
+  color: #fff;
+}
+
+.langChipDisabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.langTarget {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  padding: 0.3rem 0;
+}
+
 /* ── Add language select ─────────────────────────────────────────────────────── */
 
 .addLangSelect {
@@ -616,4 +691,6 @@
   .formFieldWide { grid-column: 1; }
   .directionToggle { align-self: stretch; }
   .dirBtn { flex: 1; text-align: center; }
+  .langChip { font-size: 0.78rem; padding: 0.25rem 0.6rem; min-height: 44px; }
+  .langRowLabel { min-width: 90px; font-size: 0.68rem; }
 }
