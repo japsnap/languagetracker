@@ -467,6 +467,150 @@
 
 .candidateValue { color: var(--text-secondary); }
 
+/* ── "See more" row ──────────────────────────────────────────────────────────── */
+
+.seeMoreRow {
+  border-top: 1px solid var(--border);
+  padding-top: 0.75rem;
+}
+
+.seeMoreBtn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  padding: 0;
+  transition: color 0.15s;
+}
+.seeMoreBtn:hover { color: var(--text-primary); }
+
+/* ── Wide content layout for split view ─────────────────────────────────────── */
+
+.contentWide {
+  max-width: 1080px;
+}
+
+/* ── Lookup results split layout ─────────────────────────────────────────────── */
+
+.lookupResults {
+  display: grid;
+  grid-template-columns: 65fr 35fr;
+  gap: 1.25rem;
+  align-items: start;
+}
+
+/* ── Secondary column ────────────────────────────────────────────────────────── */
+
+.secondaryColumn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+/* ── Secondary mini-card ─────────────────────────────────────────────────────── */
+
+.miniCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.miniCardHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.55rem;
+}
+
+.miniCardFlag { font-size: 1rem; line-height: 1; }
+
+.miniCardLang {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.miniCardLoading {
+  display: flex;
+  justify-content: center;
+  padding: 0.6rem 0;
+}
+
+.miniSpinner {
+  display: inline-block;
+  width: 15px;
+  height: 15px;
+  border: 2px solid var(--border);
+  border-top-color: var(--text-muted);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+.miniCardBody {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.miniCardWord {
+  font-weight: 700;
+  font-size: 0.92rem;
+  color: var(--text-primary);
+  line-height: 1.3;
+}
+
+.miniCardMeaning {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+.miniCardExample {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  font-style: italic;
+  line-height: 1.4;
+}
+
+.miniCardError {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 0.4rem 0;
+}
+
+/* ── Add language select ─────────────────────────────────────────────────────── */
+
+.addLangSelect {
+  width: 100%;
+  padding: 0.4rem 0.7rem;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.addLangSelect:hover {
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .contentWide { max-width: 680px; }
+  .lookupResults { grid-template-columns: 1fr; }
+}
+
 @media (max-width: 640px) {
   .formGrid { grid-template-columns: 1fr; }
   .formFieldWide { grid-column: 1; }

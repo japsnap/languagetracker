@@ -20,15 +20,20 @@ async function buildHeaders() {
 }
 
 /**
- * Send { word, direction, mode } to the serverless proxy.
+ * Send { word, source_language, target_language, mode } to the serverless proxy.
  * All prompt/model details are handled server-side.
  */
-async function callAPI(word, direction, mode, signal) {
+async function callAPI(word, sourceLanguage, targetLanguage, mode, signal) {
   const response = await fetch('/api/anthropic', {
     method: 'POST',
     signal,
     headers: await buildHeaders(),
-    body: JSON.stringify({ word, direction, mode }),
+    body: JSON.stringify({
+      word,
+      source_language: sourceLanguage,
+      target_language: targetLanguage,
+      mode,
+    }),
   });
 
   if (!response.ok) {
@@ -41,17 +46,20 @@ async function callAPI(word, direction, mode, signal) {
   return (data.content?.[0]?.text || '').trim();
 }
 
-/** Spanish → English: returns an array of up to 3 word objects. */
-export async function lookupWord(word, signal) {
+/**
+ * Look up a word: returns an array of up to 3 full-depth result objects.
+ * source/target are language codes e.g. 'es', 'en', 'ja'.
+ */
+export async function lookupWord(word, sourceLanguage, targetLanguage, signal) {
   const normalized = word.toLowerCase().trim();
-  const cached = await getCachedWord(normalized, 'es-en', 'multi');
+  const cached = await getCachedWord(normalized, sourceLanguage, 'multi', targetLanguage);
   if (cached !== null) {
-    logEvent('word_lookup', { word: normalized, direction: 'es-en', mode: 'multi', cache_hit: true });
+    logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'multi', cache_hit: true });
     return Array.isArray(cached) ? cached : [cached];
   }
-  logEvent('word_lookup', { word: normalized, direction: 'es-en', mode: 'multi', cache_hit: false });
+  logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'multi', cache_hit: false });
 
-  const text = await callAPI(normalized, 'es-en', 'multi', signal);
+  const text = await callAPI(normalized, sourceLanguage, targetLanguage, 'multi', signal);
   let result;
   try {
     const parsed = JSON.parse(text);
@@ -65,21 +73,24 @@ export async function lookupWord(word, signal) {
       else throw new Error('Could not parse AI response. Try again or fill fields manually.');
     }
   }
-  await setCachedWord(normalized, 'es-en', 'multi', result);
+  await setCachedWord(normalized, sourceLanguage, 'multi', result, targetLanguage);
   return result;
 }
 
-/** Spanish → English (single): returns one word object for the most common meaning. */
-export async function lookupWordSingle(word, signal) {
+/**
+ * Look up a word: returns one full-depth result object (most common meaning).
+ * source/target are language codes e.g. 'es', 'en', 'ja'.
+ */
+export async function lookupWordSingle(word, sourceLanguage, targetLanguage, signal) {
   const normalized = word.toLowerCase().trim();
-  const cached = await getCachedWord(normalized, 'es-en', 'single');
+  const cached = await getCachedWord(normalized, sourceLanguage, 'single', targetLanguage);
   if (cached !== null) {
-    logEvent('word_lookup', { word: normalized, direction: 'es-en', mode: 'single', cache_hit: true });
+    logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'single', cache_hit: true });
     return Array.isArray(cached) ? cached[0] : cached;
   }
-  logEvent('word_lookup', { word: normalized, direction: 'es-en', mode: 'single', cache_hit: false });
+  logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'single', cache_hit: false });
 
-  const text = await callAPI(normalized, 'es-en', 'single', signal);
+  const text = await callAPI(normalized, sourceLanguage, targetLanguage, 'single', signal);
   let result;
   try {
     const parsed = JSON.parse(text);
@@ -89,54 +100,30 @@ export async function lookupWordSingle(word, signal) {
     if (match) { result = JSON.parse(match[0]); }
     else throw new Error('Could not parse AI response. Try again or fill fields manually.');
   }
-  await setCachedWord(normalized, 'es-en', 'single', result);
+  await setCachedWord(normalized, sourceLanguage, 'single', result, targetLanguage);
   return result;
 }
 
-/** English → Spanish: returns an array of up to 3 word objects. */
-export async function lookupEnglishWord(word, signal) {
+/**
+ * Brief secondary translation: returns { word_in_target, meaning_brief, example_brief }.
+ * Used for secondary language mini-cards alongside the primary result.
+ */
+export async function lookupSecondary(word, sourceLanguage, targetLanguage, signal) {
   const normalized = word.toLowerCase().trim();
-  const cached = await getCachedWord(normalized, 'en-es', 'multi');
+  const cached = await getCachedWord(normalized, sourceLanguage, 'secondary', targetLanguage);
   if (cached !== null) {
-    logEvent('word_lookup', { word: normalized, direction: 'en-es', mode: 'multi', cache_hit: true });
-    return Array.isArray(cached) ? cached : [cached];
+    return cached;
   }
-  logEvent('word_lookup', { word: normalized, direction: 'en-es', mode: 'multi', cache_hit: false });
 
-  const text = await callAPI(normalized, 'en-es', 'multi', signal);
+  const text = await callAPI(normalized, sourceLanguage, targetLanguage, 'secondary', signal);
   let result;
   try {
-    const parsed = JSON.parse(text);
-    result = Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
-    const match = text.match(/\[[\s\S]*\]/);
-    if (match) { result = JSON.parse(match[0]); }
-    else throw new Error('Could not parse AI response. Try again.');
-  }
-  await setCachedWord(normalized, 'en-es', 'multi', result);
-  return result;
-}
-
-/** English → Spanish (single): returns one word object for the most common translation. */
-export async function lookupEnglishWordSingle(word, signal) {
-  const normalized = word.toLowerCase().trim();
-  const cached = await getCachedWord(normalized, 'en-es', 'single');
-  if (cached !== null) {
-    logEvent('word_lookup', { word: normalized, direction: 'en-es', mode: 'single', cache_hit: true });
-    return Array.isArray(cached) ? cached[0] : cached;
-  }
-  logEvent('word_lookup', { word: normalized, direction: 'en-es', mode: 'single', cache_hit: false });
-
-  const text = await callAPI(normalized, 'en-es', 'single', signal);
-  let result;
-  try {
-    const parsed = JSON.parse(text);
-    result = Array.isArray(parsed) ? parsed[0] : parsed;
+    result = JSON.parse(text);
   } catch {
     const match = text.match(/\{[\s\S]*\}/);
     if (match) { result = JSON.parse(match[0]); }
-    else throw new Error('Could not parse AI response. Try again.');
+    else throw new Error('Could not parse secondary lookup response.');
   }
-  await setCachedWord(normalized, 'en-es', 'single', result);
+  await setCachedWord(normalized, sourceLanguage, 'secondary', result, targetLanguage);
   return result;
 }

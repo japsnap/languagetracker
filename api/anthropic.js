@@ -3,8 +3,8 @@
  *
  * Security model:
  *   - Requires a valid Supabase session token (Authorization: Bearer <token>)
- *   - Client sends only { word, direction, mode } — all prompt/model details
- *     are hardcoded here and never controllable by the client
+ *   - Client sends only { word, source_language, target_language, mode }
+ *     — all prompt/model details are hardcoded here and never controllable by the client
  *
  * To switch AI provider: update PROVIDER + the buildUpstreamRequest function.
  */
@@ -20,67 +20,62 @@ const PROVIDER = {
 };
 
 // ---------------------------------------------------------------------------
-// System prompts — never sent to or modifiable by the client
+// Language registry
 // ---------------------------------------------------------------------------
-const PROMPTS = {
-  'es-en': `You are a Spanish language expert. When given a Spanish word or phrase, respond with ONLY a valid JSON array of up to 3 meanings — no markdown fences, no explanation. If the user input has accent or spelling errors, correct them in the word field (e.g. espanol → español, nino → niño). Each item must use exactly these fields:
+const LANGUAGE_NAMES = {
+  en: 'English',
+  es: 'Spanish',
+  ja: 'Japanese',
+  de: 'German',
+  ko: 'Korean',
+  zh: 'Chinese',
+  ur: 'Urdu',
+  hi: 'Hindi',
+  pt: 'Portuguese',
+  fr: 'French',
+  it: 'Italian',
+};
+const VALID_CODES = new Set(Object.keys(LANGUAGE_NAMES));
+
+// ---------------------------------------------------------------------------
+// Dynamic prompt builders — never sent to or modifiable by the client
+// ---------------------------------------------------------------------------
+
+function buildPrimaryPrompt(sourceLang, targetLang, mode) {
+  const source = LANGUAGE_NAMES[sourceLang];
+  const target = LANGUAGE_NAMES[targetLang];
+  const shape = mode === 'multi'
+    ? 'a valid JSON array of up to 3 items'
+    : 'a valid JSON object';
+  const suffix = mode === 'multi'
+    ? '\n\nReturn between 1 and 3 items. Only include genuinely different meanings or usages.'
+    : '';
+  return `You are a multilingual language expert. Given a word or phrase in ${source}, respond with ONLY ${shape} — no markdown fences, no explanation. Provide the meaning in ${target}. If the input has accent or spelling errors, correct them in the word field (e.g. espanol → español, nino → niño). Use exactly these fields:
 
 {
-  "word": "the Spanish word or phrase, correctly spelled with proper accents",
-  "part_of_speech": "string — e.g. noun, verb, adjective, phrase, gerund, verb form, etc.",
-  "meaning": "string — clear English meaning",
-  "example": "string — a natural Spanish sentence using the word",
-  "recommended_level": "string — exactly one of: A1, A2, B1, B2, C1, C2",
-  "related_words": "string — comma-separated related Spanish words, or empty string",
-  "other_useful_notes": "string — grammar notes, usage tips, conjugation info, or empty string"
+  "word": "the correctly spelled word in ${source}",
+  "part_of_speech": "noun / verb / adjective / phrase / etc.",
+  "meaning": "clear meaning in ${target}",
+  "example": "a natural sentence in ${source} using the word",
+  "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
+  "related_words": "comma-separated related words in ${source}, or empty string",
+  "other_useful_notes": "grammar notes, usage tips in ${target}, or empty string"
+}${suffix}`;
 }
 
-Return between 1 and 3 items. Only include genuinely different meanings or usages.`,
-
-  'es-en-single': `You are a Spanish language expert. When given a Spanish word or phrase, respond with ONLY a valid JSON object — no markdown fences, no explanation. If the user input has accent or spelling errors, correct them in the word field (e.g. espanol → español, nino → niño). Return ONLY ONE JSON object (not an array) for the single most common meaning. Use exactly these fields:
-
-{
-  "word": "the Spanish word or phrase, correctly spelled with proper accents",
-  "part_of_speech": "string — e.g. noun, verb, adjective, phrase, gerund, verb form, etc.",
-  "meaning": "string — clear English meaning",
-  "example": "string — a natural Spanish sentence using the word",
-  "recommended_level": "string — exactly one of: A1, A2, B1, B2, C1, C2",
-  "related_words": "string — comma-separated related Spanish words, or empty string",
-  "other_useful_notes": "string — grammar notes, usage tips, conjugation info, or empty string"
-}`,
-
-  'en-es': `You are a Spanish language expert. Given an English word or expression, respond with ONLY a valid JSON array of up to 3 Spanish equivalents — no markdown fences, no explanation. If the user input has accent or spelling errors, correct them in the word field (e.g. espanol → español, nino → niño). Each item must use exactly these fields:
+function buildSecondaryPrompt(sourceLang, targetLang) {
+  const source = LANGUAGE_NAMES[sourceLang];
+  const target = LANGUAGE_NAMES[targetLang];
+  return `You are a multilingual language expert. Given a word in ${source}, respond with ONLY a valid JSON object — no markdown fences, no explanation. Provide a brief translation in ${target}. Use exactly these fields:
 
 {
-  "word": "Spanish word or phrase",
-  "part_of_speech": "noun / verb / adjective / phrase / etc.",
-  "meaning": "English meaning",
-  "example": "Natural Spanish sentence using this word",
-  "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
-  "related_words": "comma-separated related Spanish words, or empty string",
-  "other_useful_notes": "grammar notes, usage tips, conjugation info, or empty string"
+  "word_in_target": "the word translated into ${target}",
+  "meaning_brief": "a short meaning/definition in ${target} (1 sentence max)",
+  "example_brief": "one short example sentence in ${target} using this word"
+}`;
 }
 
-Return between 1 and 3 items. Only include genuinely useful Spanish equivalents.`,
-
-  'en-es-single': `You are a Spanish language expert. Given an English word or expression, respond with ONLY a valid JSON object — no markdown fences, no explanation. If the user input has accent or spelling errors, correct them in the word field. Return ONLY ONE JSON object (not an array) for the single most common meaning. Use exactly these fields:
-
-{
-  "word": "Spanish word or phrase",
-  "part_of_speech": "noun / verb / adjective / phrase / etc.",
-  "meaning": "English meaning",
-  "example": "Natural Spanish sentence using this word",
-  "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
-  "related_words": "comma-separated related Spanish words, or empty string",
-  "other_useful_notes": "grammar notes, usage tips, conjugation info, or empty string"
-}`,
-};
-
-// max_tokens per direction + mode
-const MAX_TOKENS = {
-  'es-en': { single: 400, multi: 600 },
-  'en-es': { single: 400, multi: 1400 },
-};
+const MAX_TOKENS = { single: 400, multi: 1400, secondary: 300 };
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -125,19 +120,21 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  // Validate client payload — only these three fields are accepted
-  const { word, direction, mode } = req.body ?? {};
+  // Validate client payload — only these four fields are accepted
+  const { word, source_language, target_language, mode } = req.body ?? {};
   if (
     typeof word !== 'string' || !word.trim() ||
-    (direction !== 'es-en' && direction !== 'en-es') ||
-    (mode !== 'single' && mode !== 'multi')
+    !VALID_CODES.has(source_language) ||
+    !VALID_CODES.has(target_language) ||
+    (mode !== 'single' && mode !== 'multi' && mode !== 'secondary')
   ) {
     return res.status(400).json({ error: 'Invalid request payload' });
   }
 
-  const promptKey = mode === 'single' ? `${direction}-single` : direction;
-  const systemPrompt = PROMPTS[promptKey];
-  const maxTokens = MAX_TOKENS[direction][mode];
+  const systemPrompt = mode === 'secondary'
+    ? buildSecondaryPrompt(source_language, target_language)
+    : buildPrimaryPrompt(source_language, target_language, mode);
+  const maxTokens = MAX_TOKENS[mode];
 
   const apiKey = process.env[PROVIDER.apiKeyEnvVar];
   if (!apiKey) {
