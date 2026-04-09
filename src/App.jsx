@@ -1,9 +1,10 @@
-import { useState, lazy, Suspense } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './components/Auth/AuthProvider';
 import LoginPage from './components/Auth/LoginPage';
 import { useVocabulary } from './hooks/useVocabulary';
 import Navigation from './components/Navigation/Navigation';
 import { supabase } from './utils/supabase';
+import { getPreferences, updatePreferences } from './utils/preferences';
 import styles from './App.module.css';
 
 const ReviewPage   = lazy(() => import('./components/Review/ReviewPage'));
@@ -24,7 +25,18 @@ export default function App() {
 function AppShell() {
   const { session, user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('input');
+  const [preferences, setPreferences] = useState(null);
   const { words, loading: vocabLoading, error, toggleStar, updateWord, addWord, removeWord } = useVocabulary();
+
+  useEffect(() => {
+    if (!user?.id) { setPreferences(null); return; }
+    getPreferences(user.id).then(setPreferences).catch(() => {});
+  }, [user?.id]);
+
+  const handleUpdatePreferences = useCallback((changes) => {
+    setPreferences(prev => prev ? { ...prev, ...changes } : prev);
+    if (user?.id) updatePreferences(user.id, changes).catch(() => {});
+  }, [user?.id]);
 
   if (loading) {
     return (
@@ -80,12 +92,12 @@ function AppShell() {
           )}
           {activeTab === 'stats' && <StatsPage words={words} />}
           {activeTab === 'input' && (
-            <InputPage words={words} onAddWord={addWord} onRemoveWord={removeWord} />
+            <InputPage words={words} onAddWord={addWord} onRemoveWord={removeWord} preferences={preferences} />
           )}
           {activeTab === 'quiz' && (
             <QuizPage words={words} onUpdateWord={updateWord} />
           )}
-          {activeTab === 'settings' && <SettingsPage words={words} user={user} />}
+          {activeTab === 'settings' && <SettingsPage words={words} user={user} preferences={preferences} onUpdatePreferences={handleUpdatePreferences} />}
           {activeTab === 'admin'    && <AdminPage user={user} />}
         </Suspense>
       </main>

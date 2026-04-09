@@ -130,3 +130,63 @@
 }
 .actionBtn:hover:not(:disabled) { opacity: 0.82; }
 .actionBtn:disabled { opacity: 0.38; cursor: default; }
+
+/* ── Language section ────────────────────────────────────────────────────────── */
+
+.langSelect {
+  flex-shrink: 0;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 0.875rem;
+  cursor: pointer;
+}
+
+.langSecondaryRow {
+  padding: 1rem 1.25rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.langChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.langChip {
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 100px;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.langChip:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.langChipActive {
+  background: var(--text-primary);
+  color: #fff;
+  border-color: var(--text-primary);
+}
+
+.langChipActive:hover {
+  opacity: 0.82;
+}
+
+.langWarning {
+  font-size: 0.8rem;
+  color: var(--warning);
+}

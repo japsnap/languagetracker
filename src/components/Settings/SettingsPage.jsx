@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import styles from './SettingsPage.module.css';
 import { logEvent } from '../../utils/events';
+import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 
 const CSV_COLUMNS = [
   'word', 'part_of_speech', 'meaning', 'example', 'recommended_level',
@@ -40,7 +42,9 @@ function formatDate(isoString) {
   });
 }
 
-export default function SettingsPage({ words, user }) {
+export default function SettingsPage({ words, user, preferences, onUpdatePreferences }) {
+  const [maxWarning, setMaxWarning] = useState(false);
+
   const mastered      = words.filter(w => w.mastered).length;
   const totalAttempts = words.reduce((s, w) => s + (w.total_attempts || 0), 0);
   const totalErrors   = words.reduce((s, w) => s + (w.error_counter   || 0), 0);
@@ -48,6 +52,23 @@ export default function SettingsPage({ words, user }) {
   const accuracy      = totalAttempts > 0
     ? Math.round((totalCorrect / totalAttempts) * 100)
     : null;
+
+  function handlePrimaryChange(code) {
+    const secondary = (preferences.secondary_languages || []).filter(c => c !== code);
+    onUpdatePreferences({ primary_language: code, secondary_languages: secondary });
+  }
+
+  function handleSecondaryToggle(code) {
+    const current = preferences.secondary_languages || [];
+    if (current.includes(code)) {
+      onUpdatePreferences({ secondary_languages: current.filter(c => c !== code) });
+    } else if (current.length >= 4) {
+      setMaxWarning(true);
+      setTimeout(() => setMaxWarning(false), 3000);
+    } else {
+      onUpdatePreferences({ secondary_languages: [...current, code] });
+    }
+  }
 
   function handleExportCSV() {
     logEvent('csv_export', { word_count: words.length });
@@ -86,6 +107,63 @@ export default function SettingsPage({ words, user }) {
                 value={accuracy !== null ? `${accuracy}%` : '—'}
               />
             </div>
+          </div>
+        </section>
+
+        {/* Languages */}
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Languages</h2>
+          <div className={styles.card}>
+            {preferences ? (
+              <>
+                <div className={styles.row}>
+                  <div className={styles.rowInfo}>
+                    <span className={styles.rowLabel}>Primary Language</span>
+                    <span className={styles.rowDesc}>Primary language is used for full word definitions. Secondary languages show brief translations.</span>
+                  </div>
+                  <select
+                    className={styles.langSelect}
+                    value={preferences.primary_language}
+                    onChange={e => handlePrimaryChange(e.target.value)}
+                  >
+                    {SUPPORTED_LANGUAGES.map(lang => (
+                      <option key={lang.code} value={lang.code}>
+                        {lang.flag} {lang.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className={styles.langSecondaryRow}>
+                  <div className={styles.rowInfo}>
+                    <span className={styles.rowLabel}>Secondary Languages</span>
+                    <span className={styles.rowDesc}>Up to 4.</span>
+                  </div>
+                  <div className={styles.langChips}>
+                    {SUPPORTED_LANGUAGES
+                      .filter(l => l.code !== preferences.primary_language)
+                      .map(lang => {
+                        const active = (preferences.secondary_languages || []).includes(lang.code);
+                        return (
+                          <button
+                            key={lang.code}
+                            className={`${styles.langChip} ${active ? styles.langChipActive : ''}`}
+                            onClick={() => handleSecondaryToggle(lang.code)}
+                          >
+                            {lang.flag} {lang.label}
+                          </button>
+                        );
+                      })}
+                  </div>
+                  {maxWarning && (
+                    <p className={styles.langWarning}>Maximum 4 secondary languages.</p>
+                  )}
+                </div>
+              </>
+            ) : (
+              <div className={styles.row}>
+                <span className={styles.rowDesc}>Loading…</span>
+              </div>
+            )}
           </div>
         </section>
 
