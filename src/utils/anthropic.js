@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { getCachedWord, setCachedWord } from './cache';
 
 async function buildHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -41,54 +42,92 @@ async function callAPI(word, direction, mode, signal) {
 
 /** Spanish → English: returns an array of up to 3 word objects. */
 export async function lookupWord(word, signal) {
-  const text = await callAPI(word.trim(), 'es-en', 'multi', signal);
+  const normalized = word.toLowerCase().trim();
+  const cached = await getCachedWord(normalized, 'es-en', 'multi');
+  if (cached !== null) {
+    return Array.isArray(cached) ? cached : [cached];
+  }
+
+  const text = await callAPI(normalized, 'es-en', 'multi', signal);
+  let result;
   try {
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [parsed];
+    result = Array.isArray(parsed) ? parsed : [parsed];
   } catch {
     const arrMatch = text.match(/\[[\s\S]*\]/);
-    if (arrMatch) return JSON.parse(arrMatch[0]);
-    const objMatch = text.match(/\{[\s\S]*\}/);
-    if (objMatch) return [JSON.parse(objMatch[0])];
-    throw new Error('Could not parse AI response. Try again or fill fields manually.');
+    if (arrMatch) { result = JSON.parse(arrMatch[0]); }
+    else {
+      const objMatch = text.match(/\{[\s\S]*\}/);
+      if (objMatch) { result = [JSON.parse(objMatch[0])]; }
+      else throw new Error('Could not parse AI response. Try again or fill fields manually.');
+    }
   }
+  await setCachedWord(normalized, 'es-en', 'multi', result);
+  return result;
 }
 
 /** Spanish → English (single): returns one word object for the most common meaning. */
 export async function lookupWordSingle(word, signal) {
-  const text = await callAPI(word.trim(), 'es-en', 'single', signal);
+  const normalized = word.toLowerCase().trim();
+  const cached = await getCachedWord(normalized, 'es-en', 'single');
+  if (cached !== null) {
+    return Array.isArray(cached) ? cached[0] : cached;
+  }
+
+  const text = await callAPI(normalized, 'es-en', 'single', signal);
+  let result;
   try {
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed[0] : parsed;
+    result = Array.isArray(parsed) ? parsed[0] : parsed;
   } catch {
     const match = text.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error('Could not parse AI response. Try again or fill fields manually.');
+    if (match) { result = JSON.parse(match[0]); }
+    else throw new Error('Could not parse AI response. Try again or fill fields manually.');
   }
+  await setCachedWord(normalized, 'es-en', 'single', result);
+  return result;
 }
 
 /** English → Spanish: returns an array of up to 3 word objects. */
 export async function lookupEnglishWord(word, signal) {
-  const text = await callAPI(word.trim(), 'en-es', 'multi', signal);
+  const normalized = word.toLowerCase().trim();
+  const cached = await getCachedWord(normalized, 'en-es', 'multi');
+  if (cached !== null) {
+    return Array.isArray(cached) ? cached : [cached];
+  }
+
+  const text = await callAPI(normalized, 'en-es', 'multi', signal);
+  let result;
   try {
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : [parsed];
+    result = Array.isArray(parsed) ? parsed : [parsed];
   } catch {
     const match = text.match(/\[[\s\S]*\]/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error('Could not parse AI response. Try again.');
+    if (match) { result = JSON.parse(match[0]); }
+    else throw new Error('Could not parse AI response. Try again.');
   }
+  await setCachedWord(normalized, 'en-es', 'multi', result);
+  return result;
 }
 
 /** English → Spanish (single): returns one word object for the most common translation. */
 export async function lookupEnglishWordSingle(word, signal) {
-  const text = await callAPI(word.trim(), 'en-es', 'single', signal);
+  const normalized = word.toLowerCase().trim();
+  const cached = await getCachedWord(normalized, 'en-es', 'single');
+  if (cached !== null) {
+    return Array.isArray(cached) ? cached[0] : cached;
+  }
+
+  const text = await callAPI(normalized, 'en-es', 'single', signal);
+  let result;
   try {
     const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed[0] : parsed;
+    result = Array.isArray(parsed) ? parsed[0] : parsed;
   } catch {
     const match = text.match(/\{[\s\S]*\}/);
-    if (match) return JSON.parse(match[0]);
-    throw new Error('Could not parse AI response. Try again.');
+    if (match) { result = JSON.parse(match[0]); }
+    else throw new Error('Could not parse AI response. Try again.');
   }
+  await setCachedWord(normalized, 'en-es', 'single', result);
+  return result;
 }
