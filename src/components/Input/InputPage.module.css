@@ -658,7 +658,19 @@
   align-items: center;
   gap: 0.75rem;
   padding-left: 110px; /* align with chip group */
-  font-size: 0.76rem;
+}
+
+.langInfoText {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.langInfoPart {
+  white-space: nowrap;
+}
+
+.langInfoSep {
   color: var(--text-muted);
 }
 
@@ -667,7 +679,7 @@
   border: none;
   padding: 0;
   color: var(--text-muted);
-  font-size: 0.76rem;
+  font-size: 0.8rem;
   font-family: var(--font-body);
   cursor: pointer;
   text-decoration: underline;
@@ -708,6 +720,8 @@
 @media (max-width: 767px) {
   .contentWide { max-width: 680px; }
   .lookupResults { grid-template-columns: 1fr; }
+  .langInfoText { display: flex; flex-direction: column; gap: 0.15rem; }
+  .langInfoSep { display: none; }
 }
 
 @media (max-width: 640px) {

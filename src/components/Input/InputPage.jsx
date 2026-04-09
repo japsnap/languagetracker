@@ -300,7 +300,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
         {/* Language selector */}
         <div className={styles.langSelector}>
           <div className={styles.langRow}>
-            <span className={styles.langRowLabel}>I'm looking up:</span>
+            <span className={styles.langRowLabel}>Type in:</span>
             <div className={styles.chipGroup}>
               {allLangCodes.map(code => {
                 const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
@@ -320,10 +320,10 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
             </div>
           </div>
           <div className={styles.langInfo}>
-            <span>
-              Learning: {learningLangObj?.flag} {learningLangObj?.label}
-              {' '}·{' '}
-              Meaning in: {primaryLangObj?.flag} {primaryLangObj?.label}
+            <span className={styles.langInfoText}>
+              <span className={styles.langInfoPart}>Learning: {learningLangObj?.flag} {learningLangObj?.label}</span>
+              <span className={styles.langInfoSep}> · </span>
+              <span className={styles.langInfoPart}>Meaning in: {primaryLangObj?.flag} {primaryLangObj?.label}</span>
             </span>
             {onNavigate && (
               <button className={styles.langInfoLink} onClick={() => onNavigate('settings')}>
