@@ -42,6 +42,9 @@ const LANGUAGE_NAMES = {
 };
 const VALID_CODES = new Set(Object.keys(LANGUAGE_NAMES));
 
+// Languages that use non-Latin scripts and need romanization in output
+const NON_LATIN = new Set(['ja', 'ko', 'zh', 'ur', 'hi']);
+
 // ---------------------------------------------------------------------------
 // Dynamic prompt builders — never sent to or modifiable by the client
 // ---------------------------------------------------------------------------
@@ -56,6 +59,20 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
   const suffix = mode === 'multi'
     ? '\n\nReturn between 1 and 3 items. Only include genuinely different meanings or usages.'
     : '';
+
+  const romaFields = NON_LATIN.has(learningLang) ? [
+    `  "romanization": "English-readable pronunciation (${
+      learningLang === 'ja' ? 'romaji' :
+      learningLang === 'zh' ? 'pinyin with tone marks' :
+      'romanized form'
+    })"`,
+    ...(learningLang === 'ja' ? ['  "kana_reading": "full hiragana or katakana reading of the word"'] : []),
+  ] : [];
+
+  const extraFieldsStr = romaFields.length
+    ? ',\n' + romaFields.join(',\n')
+    : '';
+
   return `You are a multilingual language expert. The user has entered a word or phrase in ${input}. Respond with ONLY ${shape} — no markdown fences, no explanation. The word field must be in ${learning}. The meaning, part_of_speech, and notes must be in ${primary}. The example sentence and related words must be in ${learning}. If the input has accent or spelling errors, correct them. Use exactly these fields:
 
 {
@@ -65,19 +82,33 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
   "example": "a natural sentence in ${learning} using the word",
   "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
   "related_words": "comma-separated related words in ${learning}, or empty string",
-  "other_useful_notes": "grammar notes, usage tips in ${primary}, or empty string"
+  "other_useful_notes": "grammar notes, usage tips in ${primary}, or empty string"${extraFieldsStr}
 }${suffix}`;
 }
 
 function buildSecondaryPrompt(sourceLang, targetLang) {
   const source = LANGUAGE_NAMES[sourceLang];
   const target = LANGUAGE_NAMES[targetLang];
+
+  const romaFields = NON_LATIN.has(targetLang) ? [
+    `  "romanization": "English-readable pronunciation (${
+      targetLang === 'ja' ? 'romaji' :
+      targetLang === 'zh' ? 'pinyin with tone marks' :
+      'romanized form'
+    })"`,
+    ...(targetLang === 'ja' ? ['  "kana_reading": "full hiragana or katakana reading"'] : []),
+  ] : [];
+
+  const extraFieldsStr = romaFields.length
+    ? ',\n' + romaFields.join(',\n')
+    : '';
+
   return `You are a multilingual language expert. Given a word in ${source}, respond with ONLY a valid JSON object — no markdown fences, no explanation. Provide a brief translation in ${target}. Use exactly these fields:
 
 {
   "word_in_target": "the word translated into ${target}",
   "meaning_brief": "a short meaning/definition in ${target} (1 sentence max)",
-  "example_brief": "one short example sentence in ${target} using this word"
+  "example_brief": "one short example sentence in ${target} using this word"${extraFieldsStr}
 }`;
 }
 

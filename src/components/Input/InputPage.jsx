@@ -14,6 +14,8 @@ const EMPTY_FIELDS = {
   recommended_level: '',
   related_words: '',
   other_useful_notes: '',
+  romanization: '',
+  kana_reading: '',
 };
 
 export default function InputPage({ words, onAddWord, onRemoveWord, preferences, onUpdatePreferences, onNavigate }) {
@@ -129,6 +131,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
         recommended_level:  result.recommended_level  || '',
         related_words:      result.related_words      || '',
         other_useful_notes: result.other_useful_notes || '',
+        romanization:       result.romanization       || '',
+        kana_reading:       result.kana_reading       || '',
       });
       setPhase('preview');
       fireSecondaryLookups(resultWord.toLowerCase().trim(), secondaryLangs);
@@ -205,6 +209,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       recommended_level:  fields.recommended_level,
       related_words:      fields.related_words,
       other_useful_notes: fields.other_useful_notes,
+      romanization:       fields.romanization       || null,
+      kana_reading:       fields.kana_reading       || null,
       date_added:         localToday(),
       last_reviewed:      null,
       total_attempts:     0,
@@ -241,6 +247,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       recommended_level:  c.recommended_level  || '',
       related_words:      c.related_words      || '',
       other_useful_notes: c.other_useful_notes || '',
+      romanization:       c.romanization       || null,
+      kana_reading:       c.kana_reading       || null,
       date_added:         localToday(),
       last_reviewed:      null,
       total_attempts:     0,
@@ -503,6 +511,7 @@ function SecondaryMiniCard({ lang, entry }) {
       ) : entry.data ? (
         <div className={styles.miniCardBody}>
           <p className={styles.miniCardWord}>{entry.data.word_in_target}</p>
+          <RomanizationDisplay kana={entry.data.kana_reading} romanization={entry.data.romanization} />
           <p className={styles.miniCardMeaning}>{entry.data.meaning_brief}</p>
           {entry.data.example_brief && (
             <p className={styles.miniCardExample}>{entry.data.example_brief}</p>
@@ -525,6 +534,7 @@ function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisti
       <div className={styles.formGrid}>
         <FormField label="Word *" required>
           <input className={styles.formInput} value={fields.word} onChange={e => setField('word', e.target.value)} />
+          <RomanizationDisplay kana={fields.kana_reading} romanization={fields.romanization} />
         </FormField>
 
         <FormField label="Part of speech">
@@ -606,6 +616,7 @@ function CandidateCard({ word, alreadyInVocab, isSaved, onSave }) {
             <span className={styles.candidateLevel}>{word.recommended_level}</span>
           )}
         </div>
+        <RomanizationDisplay kana={word.kana_reading} romanization={word.romanization} />
         <div className={styles.candidateActions}>
           {isSaved ? (
             <span className={styles.savedBadge}>Saved ✓</span>
@@ -643,6 +654,18 @@ function CandidateCard({ word, alreadyInVocab, isSaved, onSave }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Shared romanization display ───────────────────────────────────────────────
+
+function RomanizationDisplay({ kana, romanization }) {
+  if (!kana && !romanization) return null;
+  return (
+    <div className={styles.wordRomanizationWrap}>
+      {kana       && <span className={styles.wordKana}>{kana}</span>}
+      {romanization && <span className={styles.wordRomanization}>{romanization}</span>}
     </div>
   );
 }

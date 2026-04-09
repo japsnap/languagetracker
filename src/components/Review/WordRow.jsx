@@ -53,6 +53,8 @@ export default function WordRow({
           <span className={styles.wordText}>{word.word}</span>
           {word.mastered && <span className={styles.masteredBadge} title="Mastered">✓</span>}
           {word.scene && <span className={styles.sceneBadge}>{word.scene}</span>}
+          {word.kana_reading   && <span className={styles.wordKana}>{word.kana_reading}</span>}
+          {word.romanization   && <span className={styles.wordRomanization}>{word.romanization}</span>}
         </td>
         <td className={styles.posCell}>{word.part_of_speech}</td>
         <td className={styles.meaningCell}>{word.meaning}</td>
@@ -87,8 +89,10 @@ export default function WordRow({
         <tr className={styles.detailRow}>
           <td colSpan={colCount ?? 7}>
             <div className={styles.detailGrid}>
-              {word.related_words && <DetailField label="Related words" value={word.related_words} />}
-              {word.other_useful_notes && <DetailField label="Notes" value={word.other_useful_notes} />}
+              {word.kana_reading      && <DetailField label="Reading"      value={word.kana_reading} />}
+              {word.romanization     && <DetailField label="Pronunciation" value={word.romanization} />}
+              {word.related_words    && <DetailField label="Related words" value={word.related_words} />}
+              {word.other_useful_notes && <DetailField label="Notes"       value={word.other_useful_notes} />}
 
               {/* Scene tag selector */}
               <div className={styles.detailField}>

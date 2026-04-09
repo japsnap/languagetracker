@@ -319,7 +319,15 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, onAnswer, onChangeAnswe
           )}
         </div>
 
-        <div className={styles.cardWord}>{word.word}</div>
+        <div className={styles.cardWordWrap}>
+          <div className={styles.cardWord}>{word.word}</div>
+          {phase === 'revealed' && (word.kana_reading || word.romanization) && (
+            <div className={styles.cardRomanization}>
+              {word.kana_reading   && <span className={styles.cardKana}>{word.kana_reading}</span>}
+              {word.romanization   && <span className={styles.cardRoma}>{word.romanization}</span>}
+            </div>
+          )}
+        </div>
 
         {/* Answer buttons — question phase */}
         {phase === 'question' && (
