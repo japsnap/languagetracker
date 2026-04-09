@@ -122,23 +122,6 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
               <>
                 <div className={styles.row}>
                   <div className={styles.rowInfo}>
-                    <span className={styles.rowLabel}>Primary Language</span>
-                    <span className={styles.rowDesc}>Primary language is used for full word definitions. Secondary languages show brief translations.</span>
-                  </div>
-                  <select
-                    className={styles.langSelect}
-                    value={preferences.primary_language}
-                    onChange={e => handlePrimaryChange(e.target.value)}
-                  >
-                    {SUPPORTED_LANGUAGES.map(lang => (
-                      <option key={lang.code} value={lang.code}>
-                        {lang.flag} {lang.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className={styles.row}>
-                  <div className={styles.rowInfo}>
                     <span className={styles.rowLabel}>Learning Language</span>
                     <span className={styles.rowDesc}>The language you are currently learning. Sets your default input on the Input page.</span>
                   </div>
@@ -154,6 +137,23 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
                           {lang.flag} {lang.label}
                         </option>
                       ))}
+                  </select>
+                </div>
+                <div className={styles.row}>
+                  <div className={styles.rowInfo}>
+                    <span className={styles.rowLabel}>Primary Language</span>
+                    <span className={styles.rowDesc}>Primary language is used for full word definitions. Secondary languages show brief translations.</span>
+                  </div>
+                  <select
+                    className={styles.langSelect}
+                    value={preferences.primary_language}
+                    onChange={e => handlePrimaryChange(e.target.value)}
+                  >
+                    {SUPPORTED_LANGUAGES.map(lang => (
+                      <option key={lang.code} value={lang.code}>
+                        {lang.flag} {lang.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
                 <div className={styles.langSecondaryRow}>

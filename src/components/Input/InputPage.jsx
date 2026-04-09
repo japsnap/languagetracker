@@ -342,6 +342,16 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
               })}
             </div>
           </div>
+          <div className={styles.swapRow}>
+            <button
+              className={styles.swapBtn}
+              onClick={() => { setSourceLang(actualTarget); setTargetLang(actualSource); resetLookupState(); }}
+              title="Swap languages"
+              aria-label="Swap source and target languages"
+            >
+              ⇅
+            </button>
+          </div>
           <div className={styles.langRow}>
             <span className={styles.langRowLabel}>Show meaning in:</span>
             <div className={styles.chipGroup}>

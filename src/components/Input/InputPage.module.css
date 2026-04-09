@@ -653,6 +653,42 @@
   cursor: default;
 }
 
+.swapRow {
+  display: flex;
+  justify-content: flex-start;
+  padding-left: 110px; /* align with chip group, after label width */
+}
+
+.swapBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  /* center the icon visually within the larger touch target */
+  padding: 0;
+  position: relative;
+}
+.swapBtn::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+}
+.swapBtn:hover {
+  border-color: var(--border-strong);
+  color: var(--text-secondary);
+  background: var(--bg-card);
+}
+
 .langTarget {
   font-size: 0.82rem;
   font-weight: 600;
@@ -693,4 +729,5 @@
   .dirBtn { flex: 1; text-align: center; }
   .langChip { font-size: 0.78rem; padding: 0.25rem 0.6rem; min-height: 44px; }
   .langRowLabel { min-width: 90px; font-size: 0.68rem; }
+  .swapRow { padding-left: 90px; }
 }
