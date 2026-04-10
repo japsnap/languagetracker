@@ -20,13 +20,32 @@ const ANSWER_ICONS = { correct: '✅', wrong: '❌', 'not-sure': '🤷' };
 
 const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak: 0 };
 
-// Strip diacritics so "espanol" matches "español", etc.
+// Strip diacritics so "espanol" normalizes same as "español".
 function stripDiacritics(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
+
+// Levenshtein distance — O(m*n), fine for short vocabulary words.
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      dp[i][j] = a[i - 1] === b[j - 1]
+        ? dp[i - 1][j - 1]
+        : 1 + Math.min(dp[i - 1][j], dp[i][j - 1], dp[i - 1][j - 1]);
+    }
+  }
+  return dp[m][n];
+}
+
+// Accept if distance <= 1, except require exact match for words ≤ 3 chars.
 function answersMatch(input, correct) {
   const norm = s => stripDiacritics(s.toLowerCase().trim());
-  return norm(input) === norm(correct);
+  const a = norm(input), b = norm(correct);
+  if (b.length <= 3) return a === b;
+  return levenshtein(a, b) <= 1;
 }
 
 export default function QuizPage({ words, onUpdateWord, preferences }) {
@@ -44,7 +63,7 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
   const [hasChanged, setHasChanged] = useState(false);
   const [prevEntry, setPrevEntry] = useState(null); // { word, answer, hasChanged, session, typedAnswer }
   const [canGoBack, setCanGoBack] = useState(false);
-  const [quizMode, setQuizMode] = useState('normal'); // 'normal' | 'reverse'
+  const [quizMode, setQuizMode] = useState('easy'); // 'easy' | 'hard'
   const [typedAnswer, setTypedAnswer] = useState('');
   const [langFilter, setLangFilter] = useState('');
 
@@ -240,16 +259,16 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
         <div className={styles.settingsGroup}>
           <span className={styles.settingsLabel}>Mode:</span>
           <button
-            className={`${styles.levelBtn} ${quizMode === 'normal' ? styles.levelActive : ''}`}
-            onClick={() => setQuizMode('normal')}
+            className={`${styles.levelBtn} ${quizMode === 'easy' ? styles.levelActive : ''}`}
+            onClick={() => setQuizMode('easy')}
           >
-            Normal
+            Easy
           </button>
           <button
-            className={`${styles.levelBtn} ${quizMode === 'reverse' ? styles.levelActive : ''}`}
-            onClick={() => setQuizMode('reverse')}
+            className={`${styles.levelBtn} ${quizMode === 'hard' ? styles.levelActive : ''}`}
+            onClick={() => setQuizMode('hard')}
           >
-            Reverse
+            Hard
           </button>
         </div>
 
@@ -425,7 +444,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
 
   // Auto-focus the text input whenever a reverse-mode question appears
   useEffect(() => {
-    if (quizMode === 'reverse' && phase === 'question' && inputRef.current) {
+    if (quizMode === 'hard' && phase === 'question' && inputRef.current) {
       inputRef.current.focus();
     }
   }, [word.id, quizMode, phase]);
@@ -435,7 +454,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
     phase === 'revealed' && lastAnswer ? styles[`card_${lastAnswer.replace('-', '_')}`] : '',
   ].filter(Boolean).join(' ');
 
-  const isReverse = quizMode === 'reverse';
+  const isHard = quizMode === 'hard'; // hard = typed production; easy = self-assessed recognition
   const learningLang = SUPPORTED_LANGUAGES.find(l => l.code === word.word_language);
 
   return (
@@ -466,7 +485,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         </div>
 
         {/* ── Normal mode: word is the question ── */}
-        {!isReverse && (
+        {!isHard && (
           <div className={styles.cardWordWrap}>
             <div className={styles.cardWord} translate="no">{word.word}</div>
             {phase === 'revealed' && (word.kana_reading || word.romanization) && (
@@ -479,14 +498,14 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         )}
 
         {/* ── Reverse mode question: meaning is the prompt ── */}
-        {isReverse && phase === 'question' && (
+        {isHard && phase === 'question' && (
           <div className={styles.reverseMeaningWrap}>
             <div className={styles.reverseMeaning}>{word.meaning}</div>
           </div>
         )}
 
         {/* ── Reverse mode revealed: show the correct word ── */}
-        {isReverse && phase === 'revealed' && (
+        {isHard && phase === 'revealed' && (
           <div className={styles.cardWordWrap}>
             <div className={styles.cardWord} translate="no">{word.word}</div>
             {(word.kana_reading || word.romanization) && (
@@ -499,7 +518,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         )}
 
         {/* ── Normal mode answer buttons ── */}
-        {!isReverse && phase === 'question' && (
+        {!isHard && phase === 'question' && (
           <div className={styles.answerButtons}>
             <button className={`${styles.answerBtn} ${styles.correct}`} onClick={() => onAnswer('correct')}>✅ I knew it</button>
             <button className={`${styles.answerBtn} ${styles.wrong}`} onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
@@ -508,7 +527,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         )}
 
         {/* ── Reverse mode input + self-assess ── */}
-        {isReverse && phase === 'question' && (
+        {isHard && phase === 'question' && (
           <div className={styles.reverseInputSection}>
             <div className={styles.reverseInputRow}>
               <input
@@ -548,7 +567,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         {phase === 'revealed' && (
           <>
             {/* Answer comparison — reverse mode, when user typed rather than self-assessed */}
-            {isReverse && typedAnswer && (
+            {isHard && typedAnswer && (
               <div className={styles.answerComparison}>
                 <div className={`${styles.compCell} ${lastAnswer === 'correct' ? styles.compCellCorrect : styles.compCellWrong}`}>
                   <span className={styles.compCellLabel}>Your answer</span>
@@ -566,7 +585,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
             <div className={styles.revealDivider} />
             <div className={styles.revealGrid}>
               {/* Normal mode: show meaning. Reverse mode: meaning was the question, skip it. */}
-              {!isReverse && <RevealField label="Meaning" value={word.meaning} highlight />}
+              {!isHard && <RevealField label="Meaning" value={word.meaning} highlight />}
               {word.example && <RevealField label="Example" value={word.example} italic />}
               {word.related_words && <RevealField label="Related words" value={word.related_words} />}
               {word.other_useful_notes && <RevealField label="Notes" value={word.other_useful_notes} />}
