@@ -15,6 +15,7 @@ const LEVEL_COLORS = {
 export default function WordRow({
   word, isExpanded, onToggleExpand, onToggleStar, onUpdateWord,
   selectMode, isSelected, onToggleSelect, colCount, showLangBadge,
+  anchorLetter,
 }) {
   const memLevel = memorizationLevel(word);
 
@@ -36,6 +37,7 @@ export default function WordRow({
   return (
     <>
       <tr
+        data-alpha-anchor={anchorLetter || undefined}
         className={`${styles.row} ${isExpanded ? styles.expanded : ''} ${isSelected ? styles.selected : ''}`}
         onClick={handleRowClick}
       >

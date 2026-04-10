@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { filterAndSort, SORT_OPTIONS, SCENES, ALL_LEVELS } from '../../utils/sorting';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import WordRow from './WordRow';
@@ -27,6 +27,10 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkScene, setBulkScene]     = useState('');
 
+  // Alpha quick-scroll
+  const tableWrapperRef = useRef(null);
+  const [activeLetter, setActiveLetter] = useState('');
+
   // Languages that exist in this user's vocabulary
   const vocabLangs = useMemo(
     () => [...new Set(words.map(w => w.word_language).filter(Boolean))].sort(),
@@ -44,6 +48,63 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
     () => filterAndSort(words, { search, sortBy, starredOnly, scene, levels, language: langFilter }),
     [words, search, sortBy, starredOnly, scene, levels, langFilter]
   );
+
+  const isAlphaSort = sortBy === 'alpha-asc' || sortBy === 'alpha-desc';
+  const showAlphaScroller = isAlphaSort && !selectMode && filtered.length > 0;
+
+  // wordId → letter for the first word of each letter group (A-Z only)
+  const alphaAnchorMap = useMemo(() => {
+    if (!isAlphaSort) return new Map();
+    const map = new Map();
+    const seen = new Set();
+    for (const word of filtered) {
+      const letter = word.word?.[0]?.toUpperCase();
+      if (letter && /[A-Z]/.test(letter) && !seen.has(letter)) {
+        map.set(word.id, letter);
+        seen.add(letter);
+      }
+    }
+    return map;
+  }, [filtered, isAlphaSort]);
+
+  // Letters in list order (A→Z or Z→A, matching the current sort)
+  const alphaLetters = useMemo(
+    () => Array.from(alphaAnchorMap.values()),
+    [alphaAnchorMap]
+  );
+
+  function scrollToLetter(letter) {
+    const anchor = tableWrapperRef.current?.querySelector(`[data-alpha-anchor="${letter}"]`);
+    if (anchor) {
+      anchor.scrollIntoView({ block: 'start', behavior: 'smooth' });
+      setActiveLetter(letter);
+    }
+  }
+
+  // Track which letter section is currently at the top of the visible area
+  useEffect(() => {
+    if (!showAlphaScroller || !tableWrapperRef.current) return;
+    const wrapper = tableWrapperRef.current;
+
+    function updateActive() {
+      const wrapperTop = wrapper.getBoundingClientRect().top;
+      const anchors = Array.from(wrapper.querySelectorAll('[data-alpha-anchor]'));
+      let active = anchors[0]?.dataset.alphaAnchor ?? '';
+      for (const el of anchors) {
+        if (el.getBoundingClientRect().top <= wrapperTop + 4) {
+          active = el.dataset.alphaAnchor;
+        }
+      }
+      setActiveLetter(active);
+    }
+
+    wrapper.addEventListener('scroll', updateActive, { passive: true });
+    const raf = requestAnimationFrame(updateActive);
+    return () => {
+      wrapper.removeEventListener('scroll', updateActive);
+      cancelAnimationFrame(raf);
+    };
+  }, [showAlphaScroller, filtered]);
 
   function handleToggleExpand(id) {
     if (selectMode) return;
@@ -191,43 +252,98 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
         )}
       </div>
 
-      {filtered.length === 0 ? (
-        <div className={styles.empty}>No words match your filters.</div>
-      ) : (
-        <div className={styles.tableWrapper}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                {selectMode && <th className={styles.thCheck} />}
-                <th>Word</th>
-                <th>Part of Speech</th>
-                <th>Meaning</th>
-                <th>Example</th>
-                <th>Level</th>
-                <th>Memory</th>
-                <th>★</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(word => (
-                <WordRow
-                  key={word.id}
-                  word={word}
-                  isExpanded={!selectMode && expandedId === word.id}
-                  onToggleExpand={handleToggleExpand}
-                  onToggleStar={onToggleStar}
-                  onUpdateWord={onUpdateWord}
-                  selectMode={selectMode}
-                  isSelected={selectedIds.has(word.id)}
-                  onToggleSelect={handleToggleSelect}
-                  colCount={colCount}
-                  showLangBadge={hasMultipleLangs}
-                />
-              ))}
-            </tbody>
-          </table>
+      <div className={styles.tableArea}>
+        {filtered.length === 0 ? (
+          <div className={styles.empty}>No words match your filters.</div>
+        ) : (
+          <>
+            <div className={styles.tableWrapper} ref={tableWrapperRef}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    {selectMode && <th className={styles.thCheck} />}
+                    <th>Word</th>
+                    <th>Part of Speech</th>
+                    <th>Meaning</th>
+                    <th>Example</th>
+                    <th>Level</th>
+                    <th>Memory</th>
+                    <th>★</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(word => (
+                    <WordRow
+                      key={word.id}
+                      word={word}
+                      isExpanded={!selectMode && expandedId === word.id}
+                      onToggleExpand={handleToggleExpand}
+                      onToggleStar={onToggleStar}
+                      onUpdateWord={onUpdateWord}
+                      selectMode={selectMode}
+                      isSelected={selectedIds.has(word.id)}
+                      onToggleSelect={handleToggleSelect}
+                      colCount={colCount}
+                      showLangBadge={hasMultipleLangs}
+                      anchorLetter={alphaAnchorMap.get(word.id)}
+                    />
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {showAlphaScroller && (
+              <AlphaScroller
+                letters={alphaLetters}
+                activeLetter={activeLetter}
+                onLetterClick={scrollToLetter}
+              />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── AlphaScroller ─────────────────────────────────────────────────────────────
+
+function AlphaScroller({ letters, activeLetter, onLetterClick }) {
+  const [hoverLetter, setHoverLetter] = useState(null);
+  const [popupTop, setPopupTop] = useState(0);
+  const stripRef = useRef(null);
+
+  function handleEnter(e, letter) {
+    const stripRect = stripRef.current?.getBoundingClientRect();
+    const btnRect = e.currentTarget.getBoundingClientRect();
+    setPopupTop(btnRect.top - (stripRect?.top ?? 0) + btnRect.height / 2);
+    setHoverLetter(letter);
+  }
+
+  function handleLeave() {
+    setHoverLetter(null);
+  }
+
+  return (
+    <div className={styles.alphaStrip} ref={stripRef}>
+      {hoverLetter && (
+        <div className={styles.alphaPopup} style={{ top: popupTop }}>
+          {hoverLetter}
         </div>
       )}
+      {letters.map(letter => (
+        <button
+          key={letter}
+          className={`${styles.alphaBtn} ${activeLetter === letter ? styles.alphaBtnActive : ''}`}
+          onClick={() => onLetterClick(letter)}
+          onMouseEnter={e => handleEnter(e, letter)}
+          onMouseLeave={handleLeave}
+          onTouchStart={e => handleEnter(e.touches[0] ? { currentTarget: e.currentTarget } : e, letter)}
+          onTouchEnd={handleLeave}
+        >
+          {letter}
+        </button>
+      ))}
     </div>
   );
 }

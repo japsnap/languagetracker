@@ -160,12 +160,19 @@
 }
 .cancelBtn:hover { border-color: var(--error); color: var(--error); }
 
-/* ── Table ───────────────────────────────────────────────────────────────────── */
+/* ── Table area (table + alpha strip) ───────────────────────────────────────── */
+
+.tableArea {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
 
 .tableWrapper {
+  flex: 1;
   overflow-y: auto;
   overflow-x: auto;
-  flex: 1;
+  min-width: 0;
 }
 
 .table {
@@ -196,6 +203,68 @@
 
 .thCheck { width: 36px; }
 
+/* ── Alpha quick-scroll strip ───────────────────────────────────────────────── */
+
+.alphaStrip {
+  width: 26px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0;
+  border-left: 1px solid var(--border);
+  background: var(--bg-card);
+  position: relative;
+  overflow: visible;
+  z-index: 5;
+}
+
+.alphaBtn {
+  width: 100%;
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 0;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.7rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  line-height: 1;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: color 0.1s;
+}
+.alphaBtn:hover { color: var(--text-primary); }
+
+.alphaBtnActive {
+  color: var(--gold);
+  font-weight: 800;
+}
+
+.alphaPopup {
+  position: absolute;
+  right: calc(100% + 6px);
+  transform: translateY(-50%);
+  width: 42px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--text-primary);
+  color: var(--bg-card);
+  border-radius: 50% 50% 0 50%;
+  font-size: 1.35rem;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  pointer-events: none;
+  box-shadow: var(--shadow-md);
+}
+
 /* Empty state */
 .empty {
   padding: 4rem 2rem;
@@ -207,4 +276,7 @@
 @media (max-width: 640px) {
   .toolbar { padding: 0.5rem 0.75rem; }
   .search { min-width: 160px; }
+  .alphaStrip { width: 22px; }
+  .alphaBtn { font-size: 0.65rem; min-height: 22px; }
+  .alphaPopup { width: 36px; height: 36px; font-size: 1.1rem; right: calc(100% + 4px); }
 }
