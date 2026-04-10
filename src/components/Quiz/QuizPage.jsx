@@ -20,6 +20,15 @@ const ANSWER_ICONS = { correct: '✅', wrong: '❌', 'not-sure': '🤷' };
 
 const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak: 0 };
 
+// Strip diacritics so "espanol" matches "español", etc.
+function stripDiacritics(str) {
+  return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+function answersMatch(input, correct) {
+  const norm = s => stripDiacritics(s.toLowerCase().trim());
+  return norm(input) === norm(correct);
+}
+
 export default function QuizPage({ words, onUpdateWord, preferences }) {
   const [settings, setSettings] = useState({
     levels: [],
@@ -33,8 +42,10 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
   const [lastShownId, setLastShownId] = useState(null);
   const [session, setSession] = useState(EMPTY_SESSION);
   const [hasChanged, setHasChanged] = useState(false);
-  const [prevEntry, setPrevEntry] = useState(null); // { word, answer, hasChanged, session }
+  const [prevEntry, setPrevEntry] = useState(null); // { word, answer, hasChanged, session, typedAnswer }
   const [canGoBack, setCanGoBack] = useState(false);
+  const [quizMode, setQuizMode] = useState('normal'); // 'normal' | 'reverse'
+  const [typedAnswer, setTypedAnswer] = useState('');
   const [langFilter, setLangFilter] = useState('');
 
   // Set lang filter once when preferences load (preserves manual changes after that)
@@ -85,13 +96,14 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
     }
     // Save current card as "previous" before advancing
     if (current !== null) {
-      setPrevEntry({ word: current, answer: lastAnswer, hasChanged, session });
+      setPrevEntry({ word: current, answer: lastAnswer, hasChanged, session, typedAnswer });
       setCanGoBack(true);
     }
     setCurrent(next);
     setLastShownId(next.id);
     setLastAnswer(null);
     setHasChanged(false);
+    setTypedAnswer('');
     setPhase('question');
   }
 
@@ -114,6 +126,7 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
     setCurrent(prevEntry.word);
     setLastAnswer(prevEntry.answer);
     setHasChanged(prevEntry.hasChanged);
+    setTypedAnswer(prevEntry.typedAnswer ?? '');
     setPhase('revealed');
     setCanGoBack(false);
   }
@@ -146,7 +159,7 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
     (type) => {
       if (!current) return;
       onUpdateWord(current.id, computeChanges(current, type));
-      logEvent('quiz_answer', { word_id: current.id, word: current.word, answer: type });
+      logEvent('quiz_answer', { word_id: current.id, word: current.word, answer: type, quiz_mode: quizMode });
 
       setSession(prev => {
         const newStreak = type === 'correct' ? prev.streak + 1 : 0;
@@ -161,8 +174,14 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
       setLastAnswer(type);
       setPhase('revealed');
     },
-    [current, onUpdateWord]
+    [current, onUpdateWord, quizMode]
   );
+
+  // Reverse mode: compare typed input to correct word, then dispatch as correct/wrong.
+  function handleCheckAnswer(typed) {
+    if (!typed.trim() || !current) return;
+    handleAnswer(answersMatch(typed, current.word) ? 'correct' : 'wrong');
+  }
 
   // Change answer: undo first response, apply new one.
   const handleChangeAnswer = useCallback(
@@ -200,6 +219,7 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
     setHasChanged(false);
     setPrevEntry(null);
     setCanGoBack(false);
+    setTypedAnswer('');
   }
 
   const reviewed = session.correct + session.wrong + session.notSure;
@@ -215,6 +235,23 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
     <div className={styles.page}>
       {/* Settings strip */}
       <div className={styles.settingsStrip}>
+
+        {/* Mode toggle */}
+        <div className={styles.settingsGroup}>
+          <span className={styles.settingsLabel}>Mode:</span>
+          <button
+            className={`${styles.levelBtn} ${quizMode === 'normal' ? styles.levelActive : ''}`}
+            onClick={() => setQuizMode('normal')}
+          >
+            Normal
+          </button>
+          <button
+            className={`${styles.levelBtn} ${quizMode === 'reverse' ? styles.levelActive : ''}`}
+            onClick={() => setQuizMode('reverse')}
+          >
+            Reverse
+          </button>
+        </div>
 
         {/* Language filter — only shown if vocabulary has words in multiple languages */}
         {vocabLangs.length > 1 && (
@@ -338,6 +375,10 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
             hasChanged={hasChanged}
             langFlag={currentLangFlag}
             canGoBack={canGoBack}
+            quizMode={quizMode}
+            typedAnswer={typedAnswer}
+            onTypedAnswerChange={setTypedAnswer}
+            onCheckAnswer={handleCheckAnswer}
             onAnswer={handleAnswer}
             onChangeAnswer={handleChangeAnswer}
             onGoBack={handleGoBack}
@@ -379,29 +420,37 @@ function IdleScreen({ pool, onStart }) {
 
 const ALL_ANSWER_TYPES = ['correct', 'wrong', 'not-sure'];
 
-function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, onAnswer, onChangeAnswer, onGoBack, onNext }) {
+function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext }) {
+  const inputRef = useRef(null);
+
+  // Auto-focus the text input whenever a reverse-mode question appears
+  useEffect(() => {
+    if (quizMode === 'reverse' && phase === 'question' && inputRef.current) {
+      inputRef.current.focus();
+    }
+  }, [word.id, quizMode, phase]);
+
   const cardClass = [
     styles.card,
     phase === 'revealed' && lastAnswer ? styles[`card_${lastAnswer.replace('-', '_')}`] : '',
   ].filter(Boolean).join(' ');
 
+  const isReverse = quizMode === 'reverse';
+  const learningLang = SUPPORTED_LANGUAGES.find(l => l.code === word.word_language);
+
   return (
     <div className={styles.cardWrap}>
       {canGoBack && (
-        <button className={styles.prevBtn} onClick={onGoBack}>
-          ← Previous
-        </button>
+        <button className={styles.prevBtn} onClick={onGoBack}>← Previous</button>
       )}
       <div className={cardClass}>
-        {/* Header */}
+
+        {/* ── Header: pos / level / lang badge / answer icon ── */}
         <div className={styles.cardHeader}>
           <div className={styles.cardHeaderLeft}>
             <span className={styles.cardPos}>{word.part_of_speech}</span>
             {word.recommended_level && (
-              <span
-                className={styles.cardLevel}
-                style={{ backgroundColor: LEVEL_COLORS[word.recommended_level] }}
-              >
+              <span className={styles.cardLevel} style={{ backgroundColor: LEVEL_COLORS[word.recommended_level] }}>
                 {word.recommended_level}
               </span>
             )}
@@ -416,46 +465,115 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, on
           )}
         </div>
 
-        <div className={styles.cardWordWrap}>
-          <div className={styles.cardWord}>{word.word}</div>
-          {phase === 'revealed' && (word.kana_reading || word.romanization) && (
-            <div className={styles.cardRomanization}>
-              {word.kana_reading   && <span className={styles.cardKana}>{word.kana_reading}</span>}
-              {word.romanization   && <span className={styles.cardRoma}>{word.romanization}</span>}
-            </div>
-          )}
-        </div>
-
-        {/* Answer buttons — question phase */}
-        {phase === 'question' && (
-          <div className={styles.answerButtons}>
-            <button className={`${styles.answerBtn} ${styles.correct}`} onClick={() => onAnswer('correct')}>
-              ✅ I knew it
-            </button>
-            <button className={`${styles.answerBtn} ${styles.wrong}`} onClick={() => onAnswer('wrong')}>
-              ❌ I didn't know it
-            </button>
-            <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>
-              🤷 Lucky guess
-            </button>
+        {/* ── Normal mode: word is the question ── */}
+        {!isReverse && (
+          <div className={styles.cardWordWrap}>
+            <div className={styles.cardWord} translate="no">{word.word}</div>
+            {phase === 'revealed' && (word.kana_reading || word.romanization) && (
+              <div className={styles.cardRomanization}>
+                {word.kana_reading && <span className={styles.cardKana}>{word.kana_reading}</span>}
+                {word.romanization && <span className={styles.cardRoma}>{word.romanization}</span>}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Revealed info */}
+        {/* ── Reverse mode question: meaning is the prompt ── */}
+        {isReverse && phase === 'question' && (
+          <div className={styles.reverseMeaningWrap}>
+            <div className={styles.reverseMeaning}>{word.meaning}</div>
+          </div>
+        )}
+
+        {/* ── Reverse mode revealed: show the correct word ── */}
+        {isReverse && phase === 'revealed' && (
+          <div className={styles.cardWordWrap}>
+            <div className={styles.cardWord} translate="no">{word.word}</div>
+            {(word.kana_reading || word.romanization) && (
+              <div className={styles.cardRomanization}>
+                {word.kana_reading && <span className={styles.cardKana}>{word.kana_reading}</span>}
+                {word.romanization && <span className={styles.cardRoma}>{word.romanization}</span>}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ── Normal mode answer buttons ── */}
+        {!isReverse && phase === 'question' && (
+          <div className={styles.answerButtons}>
+            <button className={`${styles.answerBtn} ${styles.correct}`} onClick={() => onAnswer('correct')}>✅ I knew it</button>
+            <button className={`${styles.answerBtn} ${styles.wrong}`} onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
+            <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>🤷 Lucky guess</button>
+          </div>
+        )}
+
+        {/* ── Reverse mode input + self-assess ── */}
+        {isReverse && phase === 'question' && (
+          <div className={styles.reverseInputSection}>
+            <div className={styles.reverseInputRow}>
+              <input
+                ref={inputRef}
+                className={styles.reverseInput}
+                type="text"
+                placeholder={`Type the word${learningLang ? ` in ${learningLang.label}` : ''}...`}
+                value={typedAnswer}
+                onChange={e => onTypedAnswerChange(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter' && typedAnswer.trim()) onCheckAnswer(typedAnswer); }}
+                translate="no"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck="false"
+              />
+              <button
+                className={styles.checkBtn}
+                onClick={() => onCheckAnswer(typedAnswer)}
+                disabled={!typedAnswer.trim()}
+              >
+                Check
+              </button>
+            </div>
+            <div className={styles.selfAssessSection}>
+              <span className={styles.selfAssessLabel}>Or self-assess:</span>
+              <div className={styles.answerButtons}>
+                <button className={`${styles.answerBtn} ${styles.correct}`} onClick={() => onAnswer('correct')}>✅ I knew it</button>
+                <button className={`${styles.answerBtn} ${styles.wrong}`} onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
+                <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>🤷 Lucky guess</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ── Revealed section (both modes) ── */}
         {phase === 'revealed' && (
           <>
+            {/* Answer comparison — reverse mode, when user typed rather than self-assessed */}
+            {isReverse && typedAnswer && (
+              <div className={styles.answerComparison}>
+                <div className={`${styles.compCell} ${lastAnswer === 'correct' ? styles.compCellCorrect : styles.compCellWrong}`}>
+                  <span className={styles.compCellLabel}>Your answer</span>
+                  <span className={styles.compCellValue} translate="no">{typedAnswer}</span>
+                </div>
+                {lastAnswer !== 'correct' && (
+                  <div className={`${styles.compCell} ${styles.compCellCorrect}`}>
+                    <span className={styles.compCellLabel}>Correct</span>
+                    <span className={styles.compCellValue} translate="no">{word.word}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className={styles.revealDivider} />
             <div className={styles.revealGrid}>
-              <RevealField label="Meaning" value={word.meaning} highlight />
+              {/* Normal mode: show meaning. Reverse mode: meaning was the question, skip it. */}
+              {!isReverse && <RevealField label="Meaning" value={word.meaning} highlight />}
               {word.example && <RevealField label="Example" value={word.example} italic />}
               {word.related_words && <RevealField label="Related words" value={word.related_words} />}
               {word.other_useful_notes && <RevealField label="Notes" value={word.other_useful_notes} />}
             </div>
 
             <div className={styles.revealActions}>
-              <button className={styles.nextBtn} onClick={onNext}>
-                Next word →
-              </button>
+              <button className={styles.nextBtn} onClick={onNext}>Next word →</button>
 
               {!hasChanged && (
                 <div className={styles.changeRow}>
@@ -479,6 +597,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, on
             </div>
           </>
         )}
+
       </div>
     </div>
   );
