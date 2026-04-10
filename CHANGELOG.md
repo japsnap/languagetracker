@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-04-11
+
+- **translate="no" on word content** — added `translate="no"` to all word-display containers (Input: search field, PreviewCard, CandidateCard, SecondaryMiniCard; Quiz: card; Review: word cell + detail row; Stats: hardest/most-reviewed chart cards). Prevents browser auto-translation from mangling vocabulary content for users browsing in a different UI language.
+- **word_language column** — vocabulary table now tagged per word with its language code. New `scripts/backfill-word-language.js` script: detects non-Latin scripts by Unicode range (JA/KO/ZH/UR/HI), falls back to user's `learning_language` preference for Latin-script words, updates in batches of 200 with per-language count summary. Requires `SUPABASE_SERVICE_ROLE_KEY` in `.env`.
+- **word_language saved on new words** — InputPage now includes `word_language: learningLang` in every `handleSave` and `handleSaveCandidate` call.
+- **Quiz language filter** — language chips appear in the quiz settings strip when vocabulary spans multiple languages. Defaults to user's `learning_language` (set once on preferences load via ref). Pool is pre-filtered before `buildPool`. Language badge (flag + code) shown on quiz card header.
+- **Review language filter** — language chips appear in the review toolbar when vocabulary spans multiple languages. Default is "All". Language badge (code) shown in word cell when multiple languages are present (`showLangBadge` prop on WordRow).
+- **filterAndSort language param** — `src/utils/sorting.js` `filterAndSort` now accepts a `language` option; filters words by `word_language`.
+- **preferences passed to Quiz and Review** — `App.jsx` now forwards `preferences` prop to both `QuizPage` and `ReviewPage`.
+- **Duplicate finder script** — `scripts/find-duplicates.js`: reports duplicate rows (same word + user_id, case-insensitive) with ids, meanings, and dates. Read-only — no deletes. Run with `node --env-file=.env scripts/find-duplicates.js`. Duplicates found and cleaned from Supabase manually.
+- **Comma-separated meanings** — `api/anthropic.js` primary prompt now instructs the model: "If there are multiple meanings, separate them with commas (e.g., 'weak, feeble, frail'). Do not use slashes or semicolons." Applies to single and multi-mode lookups.
+- **Integer-only stats charts** — `StatsPage.jsx`: added `allowDecimals={false}` and `tickFormatter={v => Math.floor(v)}` to count-based axes on Words by Level (YAxis), Total Vocabulary Over Time (YAxis), and Most Reviewed Words (XAxis).
+
 ## 2026-04-10
 
 - **Three-role language system** — word lookup now separates three distinct roles: *input language* (what the user types), *learning language* (determines word, example, related words in the response), and *primary language* (determines meaning, part of speech, notes). Any input language produces output anchored to the learning language. Client sends `{ word, input_language, learning_language, primary_language, mode }`; all prompt logic is server-side.

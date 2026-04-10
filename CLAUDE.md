@@ -36,7 +36,6 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 
 ## Current State
 - Auth: Google OAuth via Supabase, password gate removed
-- ~784 words in Supabase, backfilled to owner user_id
 - Tabs: Input, Review, Quiz, Stats, Settings, Admin (owner-only)
 - 11 supported languages: EN ES JA DE KO ZH UR HI PT FR IT
 - Three-role language system live on Input page (input / learning / primary)
@@ -45,6 +44,15 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - user_events table: populated — word_lookup (cache_hit), word_added, quiz_answer, csv_export
 - Romanization fields on vocabulary table: romanization, kana_reading (populated for JA/KO/ZH/UR/HI)
 - Romanization shown on Input (PreviewCard, CandidateCard, mini-cards), Review (word cell), Quiz (revealed only)
+- word_language column on vocabulary table: populated via backfill script + saved on every new word add
+- Quiz and Review show language filter chips when vocabulary spans multiple languages
+- translate="no" on all word-content containers (Input, Quiz, Review, Stats)
+- API prompt: meanings comma-separated, no slashes/semicolons
 - Production sourcemaps disabled
+
+## One-time Scripts (scripts/)
+- `backfill-word-language.js` — tags existing vocab rows with word_language (needs SUPABASE_SERVICE_ROLE_KEY)
+- `find-duplicates.js` — reports duplicate words per user, read-only (needs SUPABASE_SERVICE_ROLE_KEY)
+- `seed-supabase.js` — original data seed (already run)
 
 @CHANGELOG.md
