@@ -14,7 +14,7 @@ const LEVEL_COLORS = {
 
 export default function WordRow({
   word, isExpanded, onToggleExpand, onToggleStar, onUpdateWord,
-  selectMode, isSelected, onToggleSelect, colCount,
+  selectMode, isSelected, onToggleSelect, colCount, showLangBadge,
 }) {
   const memLevel = memorizationLevel(word);
 
@@ -53,6 +53,9 @@ export default function WordRow({
           <span className={styles.wordText}>{word.word}</span>
           {word.mastered && <span className={styles.masteredBadge} title="Mastered">✓</span>}
           {word.scene && <span className={styles.sceneBadge}>{word.scene}</span>}
+          {showLangBadge && word.word_language && (
+            <span className={styles.langBadge}>{word.word_language.toUpperCase()}</span>
+          )}
           {word.kana_reading   && <span className={styles.wordKana}>{word.kana_reading}</span>}
           {word.romanization   && <span className={styles.wordRomanization}>{word.romanization}</span>}
         </td>

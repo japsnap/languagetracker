@@ -1,6 +1,7 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { buildPool, pickNext } from '../../utils/quiz';
 import { SCENES } from '../../utils/sorting';
+import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import FlagButton from '../FlagButton/FlagButton';
 import { logEvent } from '../../utils/events';
 import styles from './QuizPage.module.css';
@@ -19,7 +20,7 @@ const ANSWER_ICONS = { correct: '✅', wrong: '❌', 'not-sure': '🤷' };
 
 const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak: 0 };
 
-export default function QuizPage({ words, onUpdateWord }) {
+export default function QuizPage({ words, onUpdateWord, preferences }) {
   const [settings, setSettings] = useState({
     levels: [],
     starredOnly: false,
@@ -32,8 +33,30 @@ export default function QuizPage({ words, onUpdateWord }) {
   const [lastShownId, setLastShownId] = useState(null);
   const [session, setSession] = useState(EMPTY_SESSION);
   const [hasChanged, setHasChanged] = useState(false);
+  const [langFilter, setLangFilter] = useState('');
 
-  const pool = useMemo(() => buildPool(words, settings), [words, settings]);
+  // Set lang filter once when preferences load (preserves manual changes after that)
+  const langFilterAutoSet = useRef(false);
+  useEffect(() => {
+    if (!langFilterAutoSet.current && preferences?.learning_language) {
+      setLangFilter(preferences.learning_language);
+      langFilterAutoSet.current = true;
+    }
+  }, [preferences?.learning_language]);
+
+  // Unique languages that exist in this user's vocabulary
+  const vocabLangs = useMemo(
+    () => [...new Set(words.map(w => w.word_language).filter(Boolean))].sort(),
+    [words]
+  );
+
+  // Pre-filter by selected language, then apply quiz settings
+  const langFilteredWords = useMemo(
+    () => (langFilter ? words.filter(w => w.word_language === langFilter) : words),
+    [words, langFilter]
+  );
+
+  const pool = useMemo(() => buildPool(langFilteredWords, settings), [langFilteredWords, settings]);
 
   // ── settings ─────────────────────────────────────────────────────────────────
 
@@ -112,13 +135,10 @@ export default function QuizPage({ words, onUpdateWord }) {
   );
 
   // Change answer: undo first response, apply new one.
-  // `current` is the pre-answer snapshot (it is never mutated by onUpdateWord —
-  // that updates the `words` array in the parent, not the `current` ref here).
   const handleChangeAnswer = useCallback(
     (newType) => {
       if (!current || hasChanged) return;
 
-      // Recompute from original snapshot (current) as if they answered newType from the start
       onUpdateWord(current.id, computeChanges(current, newType));
 
       setSession(prev => {
@@ -152,12 +172,44 @@ export default function QuizPage({ words, onUpdateWord }) {
 
   const reviewed = session.correct + session.wrong + session.notSure;
 
+  // Flag for the current card's language
+  const currentLangFlag = current?.word_language
+    ? SUPPORTED_LANGUAGES.find(l => l.code === current.word_language)?.flag
+    : null;
+
   // ── render ───────────────────────────────────────────────────────────────────
 
   return (
     <div className={styles.page}>
       {/* Settings strip */}
       <div className={styles.settingsStrip}>
+
+        {/* Language filter — only shown if vocabulary has words in multiple languages */}
+        {vocabLangs.length > 1 && (
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Language:</span>
+            <button
+              className={`${styles.levelBtn} ${langFilter === '' ? styles.levelActive : ''}`}
+              onClick={() => setLangFilter('')}
+            >
+              All
+            </button>
+            {vocabLangs.map(code => {
+              const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
+              return (
+                <button
+                  key={code}
+                  className={`${styles.levelBtn} ${langFilter === code ? styles.levelActive : ''}`}
+                  onClick={() => setLangFilter(code === langFilter ? '' : code)}
+                  title={lang?.label}
+                >
+                  {lang?.flag} {code.toUpperCase()}
+                </button>
+              );
+            })}
+          </div>
+        )}
+
         <div className={styles.settingsGroup}>
           <span className={styles.settingsLabel}>Level:</span>
           <button
@@ -252,6 +304,7 @@ export default function QuizPage({ words, onUpdateWord }) {
             phase={phase}
             lastAnswer={lastAnswer}
             hasChanged={hasChanged}
+            langFlag={currentLangFlag}
             onAnswer={handleAnswer}
             onChangeAnswer={handleChangeAnswer}
             onNext={startOrNext}
@@ -292,7 +345,7 @@ function IdleScreen({ pool, onStart }) {
 
 const ALL_ANSWER_TYPES = ['correct', 'wrong', 'not-sure'];
 
-function QuizCard({ word, phase, lastAnswer, hasChanged, onAnswer, onChangeAnswer, onNext }) {
+function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, onAnswer, onChangeAnswer, onNext }) {
   const cardClass = [
     styles.card,
     phase === 'revealed' && lastAnswer ? styles[`card_${lastAnswer.replace('-', '_')}`] : '',
@@ -300,7 +353,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, onAnswer, onChangeAnswe
 
   return (
     <div className={styles.cardWrap}>
-      <div className={cardClass} translate="no">
+      <div className={cardClass}>
         {/* Header */}
         <div className={styles.cardHeader}>
           <div className={styles.cardHeaderLeft}>
@@ -311,6 +364,11 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, onAnswer, onChangeAnswe
                 style={{ backgroundColor: LEVEL_COLORS[word.recommended_level] }}
               >
                 {word.recommended_level}
+              </span>
+            )}
+            {word.word_language && (
+              <span className={styles.cardLangBadge}>
+                {langFlag && `${langFlag} `}{word.word_language.toUpperCase()}
               </span>
             )}
           </div>

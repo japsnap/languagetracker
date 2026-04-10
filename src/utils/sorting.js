@@ -17,12 +17,13 @@ export const SORT_OPTIONS = [
 
 export const ALL_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
-export function filterAndSort(words, { search, sortBy, starredOnly, scene, levels }) {
+export function filterAndSort(words, { search, sortBy, starredOnly, scene, levels, language }) {
   let result = words;
 
   if (starredOnly) result = result.filter(w => w.starred);
   if (scene) result = result.filter(w => w.scene === scene);
   if (levels && levels.length > 0) result = result.filter(w => levels.includes(w.recommended_level));
+  if (language) result = result.filter(w => w.word_language === language);
 
   if (search.trim()) {
     const q = search.trim().toLowerCase();

@@ -196,6 +196,18 @@
 
 .answerIcon { font-size: 1.5rem; }
 
+.cardLangBadge {
+  display: inline-block;
+  padding: 0.15rem 0.45rem;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+}
+
 .cardWordWrap {
   display: flex;
   flex-direction: column;

@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react';
 import { filterAndSort, SORT_OPTIONS, SCENES, ALL_LEVELS } from '../../utils/sorting';
+import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import WordRow from './WordRow';
 import styles from './ReviewPage.module.css';
 
@@ -12,18 +13,26 @@ const LEVEL_COLORS = {
   C2: 'var(--level-c2)',
 };
 
-export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
+export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferences }) {
   const [search, setSearch]       = useState('');
   const [sortBy, setSortBy]       = useState('date-newest');
   const [starredOnly, setStarredOnly] = useState(false);
   const [scene, setScene]         = useState('');
   const [levels, setLevels]       = useState([]);
+  const [langFilter, setLangFilter] = useState('');
   const [expandedId, setExpandedId]   = useState(null);
 
   // Bulk select
   const [selectMode, setSelectMode]   = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [bulkScene, setBulkScene]     = useState('');
+
+  // Languages that exist in this user's vocabulary
+  const vocabLangs = useMemo(
+    () => [...new Set(words.map(w => w.word_language).filter(Boolean))].sort(),
+    [words]
+  );
+  const hasMultipleLangs = vocabLangs.length > 1;
 
   function toggleLevel(lvl) {
     setLevels(prev =>
@@ -32,12 +41,12 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
   }
 
   const filtered = useMemo(
-    () => filterAndSort(words, { search, sortBy, starredOnly, scene, levels }),
-    [words, search, sortBy, starredOnly, scene, levels]
+    () => filterAndSort(words, { search, sortBy, starredOnly, scene, levels, language: langFilter }),
+    [words, search, sortBy, starredOnly, scene, levels, langFilter]
   );
 
   function handleToggleExpand(id) {
-    if (selectMode) return; // row click = select in select mode
+    if (selectMode) return;
     setExpandedId(prev => (prev === id ? null : id));
   }
 
@@ -93,6 +102,31 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
               <option value="">All scenes</option>
               {SCENES.map(s => <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>)}
             </select>
+
+            {/* Language filter — only shown when vocabulary spans multiple languages */}
+            {hasMultipleLangs && (
+              <div className={styles.langFilter}>
+                <button
+                  className={`${styles.levelBtn} ${langFilter === '' ? styles.levelActive : ''}`}
+                  onClick={() => setLangFilter('')}
+                >
+                  All
+                </button>
+                {vocabLangs.map(code => {
+                  const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
+                  return (
+                    <button
+                      key={code}
+                      className={`${styles.levelBtn} ${langFilter === code ? styles.levelActive : ''}`}
+                      onClick={() => setLangFilter(code === langFilter ? '' : code)}
+                      title={lang?.label}
+                    >
+                      {lang?.flag} {code.toUpperCase()}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             <div className={styles.levelFilter}>
               {ALL_LEVELS.map(lvl => {
@@ -187,6 +221,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord }) {
                   isSelected={selectedIds.has(word.id)}
                   onToggleSelect={handleToggleSelect}
                   colCount={colCount}
+                  showLangBadge={hasMultipleLangs}
                 />
               ))}
             </tbody>

@@ -88,14 +88,14 @@ function AppShell() {
       <main className={styles.main}>
         <Suspense fallback={<div className={styles.tabSpinner}><div className={styles.loadingSpinner} /></div>}>
           {activeTab === 'review' && (
-            <ReviewPage words={words} onToggleStar={toggleStar} onUpdateWord={updateWord} />
+            <ReviewPage words={words} onToggleStar={toggleStar} onUpdateWord={updateWord} preferences={preferences} />
           )}
           {activeTab === 'stats' && <StatsPage words={words} />}
           {activeTab === 'input' && (
             <InputPage words={words} onAddWord={addWord} onRemoveWord={removeWord} preferences={preferences} onUpdatePreferences={handleUpdatePreferences} onNavigate={setActiveTab} />
           )}
           {activeTab === 'quiz' && (
-            <QuizPage words={words} onUpdateWord={updateWord} />
+            <QuizPage words={words} onUpdateWord={updateWord} preferences={preferences} />
           )}
           {activeTab === 'settings' && <SettingsPage words={words} user={user} preferences={preferences} onUpdatePreferences={handleUpdatePreferences} />}
           {activeTab === 'admin'    && <AdminPage user={user} />}
