@@ -146,7 +146,7 @@ export default function StatsPage({ words }) {
 
         <div className={styles.chartsRow}>
           {/* Hardest words */}
-          <div className={styles.chartCard}>
+          <div className={styles.chartCard} translate="no">
             <h2 className={styles.chartTitle}>Hardest Words</h2>
             <p className={styles.chartSub}>Lowest memorization % (3+ attempts required)</p>
             {stats.hardest.length === 0 ? (
@@ -174,7 +174,7 @@ export default function StatsPage({ words }) {
           </div>
 
           {/* Most reviewed */}
-          <div className={styles.chartCard}>
+          <div className={styles.chartCard} translate="no">
             <h2 className={styles.chartTitle}>Most Reviewed Words</h2>
             <p className={styles.chartSub}>Top 10 by total quiz attempts</p>
             {stats.mostReviewed.length === 0 ? (

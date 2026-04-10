@@ -49,7 +49,7 @@ export default function WordRow({
             />
           </td>
         )}
-        <td className={styles.wordCell}>
+        <td className={styles.wordCell} translate="no">
           <span className={styles.wordText}>{word.word}</span>
           {word.mastered && <span className={styles.masteredBadge} title="Mastered">✓</span>}
           {word.scene && <span className={styles.sceneBadge}>{word.scene}</span>}
@@ -86,7 +86,7 @@ export default function WordRow({
       </tr>
 
       {isExpanded && (
-        <tr className={styles.detailRow}>
+        <tr className={styles.detailRow} translate="no">
           <td colSpan={colCount ?? 7}>
             <div className={styles.detailGrid}>
               {word.kana_reading      && <DetailField label="Reading"      value={word.kana_reading} />}

@@ -352,6 +352,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
             onKeyDown={handleKeyDown}
             disabled={phase === 'loading'}
             autoFocus
+            translate="no"
           />
           <button
             className={styles.lookupBtn}
@@ -497,7 +498,7 @@ function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguag
 
 function SecondaryMiniCard({ lang, entry }) {
   return (
-    <div className={styles.miniCard}>
+    <div className={styles.miniCard} translate="no">
       <div className={styles.miniCardHeader}>
         <span className={styles.miniCardFlag}>{lang.flag}</span>
         <span className={styles.miniCardLang}>{lang.label}</span>
@@ -526,7 +527,7 @@ function SecondaryMiniCard({ lang, entry }) {
 
 function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisting, onSave, onSaveAnyway, onDiscard, onSeeMore, seeMoreLabel }) {
   return (
-    <div className={styles.previewCard}>
+    <div className={styles.previewCard} translate="no">
       <div className={styles.previewHeader}>
         <span className={styles.previewHint}>Review and edit before saving</span>
       </div>
@@ -607,7 +608,7 @@ function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisti
 
 function CandidateCard({ word, alreadyInVocab, isSaved, onSave }) {
   return (
-    <div className={`${styles.candidateCard} ${isSaved ? styles.candidateSaved : ''}`}>
+    <div className={`${styles.candidateCard} ${isSaved ? styles.candidateSaved : ''}`} translate="no">
       <div className={styles.candidateTop}>
         <div className={styles.candidateWordRow}>
           <span className={styles.candidateWord}>{word.word}</span>

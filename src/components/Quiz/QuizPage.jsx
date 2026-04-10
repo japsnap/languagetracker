@@ -300,7 +300,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, onAnswer, onChangeAnswe
 
   return (
     <div className={styles.cardWrap}>
-      <div className={cardClass}>
+      <div className={cardClass} translate="no">
         {/* Header */}
         <div className={styles.cardHeader}>
           <div className={styles.cardHeaderLeft}>
