@@ -151,6 +151,21 @@
 
 .cardWrap { width: 100%; max-width: 600px; }
 
+.prevBtn {
+  display: block;
+  margin-bottom: 0.4rem;
+  padding: 0.2rem 0.4rem;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: color 0.15s;
+  letter-spacing: 0.01em;
+}
+.prevBtn:hover { color: var(--text-secondary); }
+
 .card {
   background: var(--bg-card);
   border: 2px solid var(--border);

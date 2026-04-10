@@ -33,6 +33,8 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
   const [lastShownId, setLastShownId] = useState(null);
   const [session, setSession] = useState(EMPTY_SESSION);
   const [hasChanged, setHasChanged] = useState(false);
+  const [prevEntry, setPrevEntry] = useState(null); // { word, answer, hasChanged, session }
+  const [canGoBack, setCanGoBack] = useState(false);
   const [langFilter, setLangFilter] = useState('');
 
   // Set lang filter once when preferences load (preserves manual changes after that)
@@ -81,11 +83,39 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
       setPhase('done');
       return;
     }
+    // Save current card as "previous" before advancing
+    if (current !== null) {
+      setPrevEntry({ word: current, answer: lastAnswer, hasChanged, session });
+      setCanGoBack(true);
+    }
     setCurrent(next);
     setLastShownId(next.id);
     setLastAnswer(null);
     setHasChanged(false);
     setPhase('question');
+  }
+
+  function handleGoBack() {
+    if (!prevEntry || !canGoBack) return;
+
+    // If current word was already answered, undo its DB changes
+    if (phase === 'revealed' && current && lastAnswer) {
+      onUpdateWord(current.id, {
+        total_attempts:  current.total_attempts,
+        correct_streak:  current.correct_streak,
+        mastered:        current.mastered,
+        error_counter:   current.error_counter,
+        last_reviewed:   current.last_reviewed,
+      });
+    }
+
+    // Restore session to state before current word (covers both phases)
+    setSession(prevEntry.session);
+    setCurrent(prevEntry.word);
+    setLastAnswer(prevEntry.answer);
+    setHasChanged(prevEntry.hasChanged);
+    setPhase('revealed');
+    setCanGoBack(false);
   }
 
   // Apply answer changes to a word starting from its `base` snapshot.
@@ -168,6 +198,8 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
     setCurrent(null);
     setLastAnswer(null);
     setHasChanged(false);
+    setPrevEntry(null);
+    setCanGoBack(false);
   }
 
   const reviewed = session.correct + session.wrong + session.notSure;
@@ -305,8 +337,10 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
             lastAnswer={lastAnswer}
             hasChanged={hasChanged}
             langFlag={currentLangFlag}
+            canGoBack={canGoBack}
             onAnswer={handleAnswer}
             onChangeAnswer={handleChangeAnswer}
+            onGoBack={handleGoBack}
             onNext={startOrNext}
           />
         )}
@@ -345,7 +379,7 @@ function IdleScreen({ pool, onStart }) {
 
 const ALL_ANSWER_TYPES = ['correct', 'wrong', 'not-sure'];
 
-function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, onAnswer, onChangeAnswer, onNext }) {
+function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, onAnswer, onChangeAnswer, onGoBack, onNext }) {
   const cardClass = [
     styles.card,
     phase === 'revealed' && lastAnswer ? styles[`card_${lastAnswer.replace('-', '_')}`] : '',
@@ -353,6 +387,11 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, onAnswer, onC
 
   return (
     <div className={styles.cardWrap}>
+      {canGoBack && (
+        <button className={styles.prevBtn} onClick={onGoBack}>
+          ← Previous
+        </button>
+      )}
       <div className={cardClass}>
         {/* Header */}
         <div className={styles.cardHeader}>

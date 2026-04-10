@@ -14,10 +14,9 @@ export function buildPool(words, { levels, starredOnly, includeMastered, scene }
 }
 
 /**
- * Pick the next word using weighted randomization.
- * - Never reviewed: highest priority
- * - Lower memorization %: higher priority
- * - Not reviewed recently: higher priority
+ * Pick the next word using a two-tier strategy:
+ * Tier 1 — never-reviewed (total_attempts === 0): always shown first, uniform random.
+ * Tier 2 — weighted by memorization % and recency (existing logic).
  * Excludes lastShownId when pool has > 1 word.
  */
 export function pickNext(pool, lastShownId) {
@@ -26,6 +25,13 @@ export function pickNext(pool, lastShownId) {
   const candidates =
     pool.length > 1 ? pool.filter(w => w.id !== lastShownId) : pool;
 
+  // Tier 1: never-reviewed words always come first
+  const neverReviewed = candidates.filter(w => w.total_attempts === 0);
+  if (neverReviewed.length > 0) {
+    return neverReviewed[Math.floor(Math.random() * neverReviewed.length)];
+  }
+
+  // Tier 2: weighted selection by memorization / recency
   const weights = candidates.map(wordWeight);
   const total = weights.reduce((a, b) => a + b, 0);
 
