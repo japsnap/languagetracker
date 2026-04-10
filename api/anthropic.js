@@ -78,7 +78,7 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
 {
   "word": "the word translated into ${learning} (corrected spelling if needed)",
   "part_of_speech": "in ${primary}: noun / verb / adjective / phrase / etc.",
-  "meaning": "clear meaning in ${primary}",
+  "meaning": "clear meaning in ${primary}. If there are multiple meanings, separate them with commas (e.g., 'weak, feeble, frail'). Do not use slashes or semicolons.",
   "example": "a natural sentence in ${learning} using the word",
   "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
   "related_words": "comma-separated related words in ${learning}, or empty string",

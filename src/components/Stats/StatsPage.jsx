@@ -96,7 +96,7 @@ export default function StatsPage({ words }) {
               <BarChart data={stats.byLevel} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                 <XAxis dataKey="level" tick={{ fill: 'var(--text-muted)', fontSize: 12 }} />
-                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} allowDecimals={false} tickFormatter={v => Math.floor(v)} />
                 <Tooltip
                   contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
                   cursor={{ fill: 'var(--bg-hover)' }}
@@ -131,7 +131,7 @@ export default function StatsPage({ words }) {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
                   <XAxis dataKey="date" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
-                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                  <YAxis tick={{ fill: 'var(--text-muted)', fontSize: 11 }} allowDecimals={false} tickFormatter={v => Math.floor(v)} />
                   <Tooltip
                     contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
                     cursor={{ stroke: 'var(--border-strong)', strokeDasharray: '4 2' }}
@@ -188,7 +188,7 @@ export default function StatsPage({ words }) {
                   layout="vertical"
                   margin={{ top: 0, right: 40, left: 0, bottom: 0 }}
                 >
-                  <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} />
+                  <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} allowDecimals={false} tickFormatter={v => Math.floor(v)} />
                   <YAxis type="category" dataKey="word" width={110} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip
                     contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
