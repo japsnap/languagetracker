@@ -41,7 +41,7 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - Three-role language system live on Input page (input / learning / primary)
 - User preferences table: primary_language, learning_language, secondary_languages
 - word_cache table: caches API responses by (input_word, input_language, learning_language, primary_language, mode)
-- user_events table: populated — word_lookup (cache_hit), word_added, quiz_answer, csv_export
+- user_events table: populated — word_lookup (cache_hit), word_added, quiz_answer (with quiz_mode), csv_export
 - Romanization fields on vocabulary table: romanization, kana_reading (populated for JA/KO/ZH/UR/HI)
 - Romanization shown on Input (PreviewCard, CandidateCard, mini-cards), Review (word cell), Quiz (revealed only)
 - word_language column on vocabulary table: populated via backfill script + saved on every new word add
@@ -49,6 +49,8 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - translate="no" on all word-content containers (Input, Quiz, Review, Stats)
 - API prompt: meanings comma-separated, no slashes/semicolons
 - Production sourcemaps disabled
+- Quiz: Easy mode (recognition/self-assess) and Hard mode (typed production); go-back one word; 0-attempt words shown first; Levenshtein leniency (distance ≤ 1 for words > 3 chars)
+- Review: alphabet quick-scroll strip on A→Z / Z→A sorts; active letter tracking; hover popup
 
 ## One-time Scripts (scripts/)
 - `backfill-word-language.js` — tags existing vocab rows with word_language (needs SUPABASE_SERVICE_ROLE_KEY)

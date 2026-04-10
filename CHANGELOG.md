@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-04-12
+
+- **Quiz go-back** — "← Previous" button on the quiz card (visible in both question and revealed phases). Stores the previous word snapshot including session state; clicking back restores the previous card in revealed phase, undoes DB stat changes for the current word if it was already answered, and restores session counts. Button disappears after going back once and reappears when a new word is shown. `prevEntry` state includes `typedAnswer` so go-back works correctly in Hard mode.
+- **0-attempt words shown first** — `pickNext` in `src/utils/quiz.js` now uses a two-tier strategy: words with `total_attempts === 0` are always shown before any weighted selection (uniform random among them). Once exhausted, falls back to existing memorization/recency weighting.
+- **Easy / Hard quiz modes** — replaces "Normal / Reverse" naming. Easy = recognition (self-assess with ✅ ❌ 🤷). Hard = production (type the word from the meaning prompt). Mode toggle in quiz settings strip; default is Easy.
+- **Hard mode typed answer** — question phase shows meaning (large) + part of speech + level badge; user types the word and presses Enter or Check. Revealed phase shows the correct word + romanization/kana, an answer comparison (green cell if correct, red + "Correct" cell if wrong), example/notes. Meaning omitted from revealed (it was the question). Self-assess buttons remain available below the input.
+- **Answer leniency** — `answersMatch` now uses Levenshtein distance ≤ 1 for words longer than 3 characters (one typo or missing accent accepted). Words 3 characters or shorter require exact match. Diacritic normalization still runs first.
+- **quiz_answer event** — now logs `quiz_mode: "easy" | "hard"` in metadata.
+- **Alphabet quick-scroll on Review** — a vertical letter strip appears on the right edge of the review table when sort is A→Z or Z→A (hidden for all other sorts). Shows only letters that have words; ordered to match sort direction. Clicking a letter smooth-scrolls to the first word of that section. Scroll listener tracks the active letter in real time (highlighted in gold). Hovering/touching a letter shows an enlarged popup bubble positioned at the hovered letter's Y offset. Hidden in bulk-select mode. `WordRow` accepts `anchorLetter` prop → `data-alpha-anchor` on `<tr>` for DOM querying.
+
 ## 2026-04-11
 
 - **translate="no" on word content** — added `translate="no"` to all word-display containers (Input: search field, PreviewCard, CandidateCard, SecondaryMiniCard; Quiz: card; Review: word cell + detail row; Stats: hardest/most-reviewed chart cards). Prevents browser auto-translation from mangling vocabulary content for users browsing in a different UI language.
