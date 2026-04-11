@@ -35,26 +35,75 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - API keys are in Vercel env vars and .env (gitignored)
 
 ## Current State
+
+### Auth & Tabs
 - Auth: Google OAuth via Supabase, password gate removed
-- Tabs: Input, Review, Quiz, Stats, Settings, Admin (owner-only)
+- Tabs: Input, Review, Quiz, Stats, Settings, Admin (owner-only, `wikipanna@gmail.com`)
+
+### Languages
 - 11 supported languages: EN ES JA DE KO ZH UR HI PT FR IT
-- Three-role language system live on Input page (input / learning / primary)
-- User preferences table: primary_language, learning_language, secondary_languages
-- word_cache table: caches API responses by (input_word, input_language, learning_language, primary_language, mode)
-- user_events table: populated — word_lookup (cache_hit), word_added, quiz_answer (with quiz_mode), csv_export
-- Romanization fields on vocabulary table: romanization, kana_reading (populated for JA/KO/ZH/UR/HI)
-- Romanization shown on Input (PreviewCard, CandidateCard, mini-cards), Review (word cell), Quiz (revealed only)
-- word_language column on vocabulary table: populated via backfill script + saved on every new word add
-- Quiz and Review show language filter chips when vocabulary spans multiple languages
+- Three-role language system: input_language (what user types), learning_language (word/example/related_words), primary_language (meaning/pos/notes)
+- User preferences table (`user_preferences`): primary_language, learning_language, secondary_languages
+- Secondary language mini-cards shown alongside main card on Input page
+
+### Vocabulary Table Schema (key columns)
+- `word`, `meaning`, `part_of_speech`, `example`, `recommended_level`, `related_words`, `other_useful_notes`
+- `romanization`, `kana_reading` — populated for JA/KO/ZH/UR/HI scripts
+- `word_language` — language code tag per word (backfill script + saved on every add)
+- `meanings_array` (jsonb) — up to 4 primary-language meanings as array
+- `word_alternatives` (jsonb) — up to 3 learning-language synonyms as array; used in Hard quiz matching
+- `starred`, `mastered`, `total_attempts`, `correct_streak`, `error_counter`, `last_reviewed`, `date_added`
+
+### Word Cache
+- `word_cache` table: caches all API responses by `(input_word, input_language, learning_language, primary_language, mode)`
+- UNIQUE constraint: `word_cache_three_role_key` — created via `scripts/migrations/001_word_cache_three_role.sql` (already run)
+- Modes: `single`, `multi`, `secondary`
+- Cache hits/misses logged to `user_events`
+
+### Event Logging
+- `user_events` table: `word_lookup` (with `cache_hit`, `quiz_mode`), `word_added`, `quiz_answer` (with `quiz_mode: 'easy'|'hard'`), `csv_export`
+- All fire-and-forget via `src/utils/events.js`
+
+### AI / API
+- `api/anthropic.js`: server-side only, builds prompts, proxies to Anthropic. Client sends `{ word, input_language, learning_language, primary_language, mode }` — no prompt control from client
+- Prompt returns: `word`, `word_alternatives[]`, `part_of_speech`, `meaning`, `meanings_array[]`, `example`, `recommended_level`, `related_words`, `other_useful_notes`, `romanization`/`kana_reading` (non-Latin only)
+- Meanings comma-separated in `meaning` field; `meanings_array` is the structured version
+- `MAX_TOKENS`: single=600, multi=1800, secondary=300
+- `api/admin-stats.js`: GET-only, admin-gated (403 for non-admin), uses `SUPABASE_SERVICE_ROLE_KEY` to count vocabulary rows across all users bypassing RLS
+
+### Quiz
+- Easy mode: recognition, self-assess with ✅ ❌ 🤷
+- Hard mode: typed production; user types the word from the meaning prompt; accepts `word` field OR any `word_alternatives` entry (Levenshtein ≤ 1 leniency for words > 3 chars)
+- Revealed card always shows full content in both modes: correct word, answer comparison (Hard), meaning, example, related_words, notes
+- Enter key on revealed card advances to next word (deferred via `setTimeout(0)`)
+- Go-back one word: ← Previous button; undoes DB stats if already answered; restores session counts
+- 0-attempt words shown first before weighted selection
+- Language filter chips when vocabulary spans multiple languages
+
+### Review
+- Alphabet quick-scroll strip on A→Z / Z→A sorts; active letter tracking; hover popup
+- Language filter chips when vocabulary spans multiple languages
+- Bulk-select mode for multi-word operations
+
+### Stats
+- "Quiz Performance by Mode" section: Easy and Hard cards side-by-side (stacked mobile), fetched from `user_events` per user
+- Standard charts: Words by Level, Vocabulary Over Time (cumulative), Hardest Words, Most Reviewed
+
+### UI
 - translate="no" on all word-content containers (Input, Quiz, Review, Stats)
-- API prompt: meanings comma-separated, no slashes/semicolons
 - Production sourcemaps disabled
-- Quiz: Easy mode (recognition/self-assess) and Hard mode (typed production); go-back one word; 0-attempt words shown first; Levenshtein leniency (distance ≤ 1 for words > 3 chars)
-- Review: alphabet quick-scroll strip on A→Z / Z→A sorts; active letter tracking; hover popup
+
+## Serverless Functions (api/)
+- `api/anthropic.js` — AI word lookup proxy, auth-gated (401 for unauthenticated)
+- `api/admin-stats.js` — cross-user vocabulary count, admin-gated (403 for non-admin)
 
 ## One-time Scripts (scripts/)
-- `backfill-word-language.js` — tags existing vocab rows with word_language (needs SUPABASE_SERVICE_ROLE_KEY)
+- `migrations/001_word_cache_three_role.sql` — adds UNIQUE constraint to word_cache (already run)
+- `backfill-word-language.js` — tags existing vocab rows with word_language (already run; needs SUPABASE_SERVICE_ROLE_KEY)
 - `find-duplicates.js` — reports duplicate words per user, read-only (needs SUPABASE_SERVICE_ROLE_KEY)
 - `seed-supabase.js` — original data seed (already run)
+
+## Pending DB Migration
+- `ALTER TABLE vocabulary ADD COLUMN IF NOT EXISTS word_alternatives jsonb;` — needed for word_alternatives field (run in Supabase SQL Editor if not done)
 
 @CHANGELOG.md
