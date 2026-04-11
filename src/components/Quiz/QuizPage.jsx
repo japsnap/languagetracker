@@ -67,6 +67,21 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
   const [typedAnswer, setTypedAnswer] = useState('');
   const [langFilter, setLangFilter] = useState('');
 
+  // Enter key advances to next word during revealed phase.
+  // Using a ref so the effect doesn't need to list startOrNext as a dep.
+  const startOrNextRef = useRef(null);
+  startOrNextRef.current = startOrNext;
+  useEffect(() => {
+    if (phase !== 'revealed') return;
+    function handleKeyDown(e) {
+      if (e.key !== 'Enter') return;
+      if (document.activeElement?.tagName === 'BUTTON') return;
+      startOrNextRef.current();
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [phase]);
+
   // Set lang filter once when preferences load (preserves manual changes after that)
   const langFilterAutoSet = useRef(false);
   useEffect(() => {
