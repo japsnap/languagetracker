@@ -101,6 +101,42 @@ export async function getCachedWord(word, inputLang, learningLang, primaryLang, 
 }
 
 /**
+ * Find a cache row by word + learning/primary/mode WITHOUT filtering on input_language.
+ * Used by fetchInsights to locate the row regardless of how it was originally inserted
+ * (direct lookup vs cross-language lookup may store different input_language values).
+ *
+ * Returns { inputLang, cacheData } where inputLang is the value to use for any
+ * subsequent setCachedExtra UPDATE. Returns null if no row found.
+ *
+ * NOTE: if multiple rows exist for the same (word, learningLang, primaryLang, mode) with
+ * different input_language values, .limit(1) returns one arbitrarily — acceptable here
+ * since we only need any matching row to perform the extra-field update.
+ */
+export async function findCachedWordRow(word, learningLang, primaryLang, mode) {
+  const normalized = word.toLowerCase().trim();
+  const selectCols = ['input_language', 'response', ...CACHE_INDEXED_FIELDS, ...CACHE_EXTRA_JSONB_FIELDS].join(', ');
+  const { data, error } = await supabase
+    .from('word_cache')
+    .select(selectCols)
+    .eq('input_word', normalized)
+    .eq('learning_language', learningLang)
+    .eq('primary_language', primaryLang)
+    .eq('mode', mode)
+    .limit(1);
+
+  if (error) {
+    console.error('[cache] findCachedWordRow failed:', error.message, { word: normalized, learningLang, primaryLang, mode });
+    return null;
+  }
+  if (!data || data.length === 0) return null;
+
+  const { input_language, response, ...rest } = data[0];
+  const cacheData = Array.isArray(response) ? response : { ...rest, ...response };
+  console.log('[cache] findCachedWordRow:', { word: normalized, storedInputLang: input_language, learningLang, primaryLang, mode });
+  return { inputLang: input_language, cacheData };
+}
+
+/**
  * Return one random cached word matching explore filters.
  * Fetches up to `limit` candidates client-side and picks randomly (Supabase has no
  * native ORDER BY RANDOM()).

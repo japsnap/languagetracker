@@ -1,18 +1,23 @@
 /**
  * On-demand word insights — etymology, register, collocations, cultural note.
  *
- * Priority order:
- *   1. word_cache.ai_insights (shared, cross-user) — checked first on every call.
- *      If populated, return immediately — no AI call, no vocabulary read needed.
- *   2. word.ai_insights (vocabulary, per-user in-memory) — used only if cache misses.
- *      If populated, backfill word_cache so future users (including this user on
- *      the next session) hit step 1. Return without an AI call.
- *   3. Call AI — write to both word_cache (shared) and vocabulary (per-user). Return.
+ * Cache key problem (and fix):
+ *   setCachedExtra must UPDATE a row using the EXACT key it was inserted with.
+ *   The full key is (input_word, input_language, learning_language, primary_language, mode).
+ *   fetchInsights only knows word.word and word.word_language — it does NOT know the
+ *   original input_language (which may differ: e.g. user typed "beautiful" in English
+ *   to get "hermoso"; cache stored input_word="beautiful", input_language="en").
  *
- * Cache key: (word, learningLang, learningLang, primaryLang, 'single') — matches the
- * key used by explore mode and direct same-language lookups. For words added from a
- * different input language (e.g. English typed → Spanish word), the key won't match
- * and step 1 will miss; the vocabulary write at step 3 still succeeds as the fallback.
+ *   Fix: findCachedWordRow() queries by (input_word=word.word, learning_language,
+ *   primary_language, mode) WITHOUT input_language, and returns the stored input_language.
+ *   setCachedExtra then uses that actual value. If the word isn't in cache at all
+ *   (e.g. cross-language words where input_word != result word), the UPDATE is skipped
+ *   gracefully and vocabulary.ai_insights still receives the write.
+ *
+ * Priority order:
+ *   1. word_cache.ai_insights — checked first via findCachedWordRow (shared, cross-user).
+ *   2. word.ai_insights (vocabulary, in-memory) — backfills word_cache, then returns.
+ *   3. AI call — writes to both word_cache and vocabulary.
  *
  * Extensibility: adding new enrichment fields to word_cache only requires adding to
  * CACHE_EXTRA_JSONB_FIELDS in cache.js + a SQL migration. No changes needed here.
@@ -23,7 +28,7 @@
 
 import { supabase } from './supabase';
 import { updateWordDB } from './vocabulary';
-import { getCachedWord, setCachedExtra } from './cache';
+import { findCachedWordRow, setCachedExtra } from './cache';
 
 async function buildHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -45,21 +50,25 @@ async function buildHeaders() {
 export async function fetchInsights(word, primaryLang, signal) {
   const learningLang = word.word_language || 'es';
   const wordLower    = word.word.toLowerCase().trim();
-  const cacheKey     = { word: wordLower, inputLang: learningLang, learningLang, primaryLang, mode: 'single' };
 
-  // 1. Check shared cache first — any prior user populates this for everyone.
-  const cacheRow = await getCachedWord(wordLower, learningLang, learningLang, primaryLang, 'single');
-  if (cacheRow?.ai_insights) {
-    console.log('[insights] step 1 hit — word_cache:', cacheKey);
-    return cacheRow.ai_insights;
+  // Find the cache row — this resolves the actual input_language stored in the row,
+  // which may differ from learningLang for cross-language lookups.
+  const cacheMatch = await findCachedWordRow(wordLower, learningLang, primaryLang, 'single');
+
+  // 1. Cache hit with ai_insights already populated — return immediately.
+  if (cacheMatch?.cacheData?.ai_insights) {
+    console.log('[insights] step 1 hit — word_cache:', { word: wordLower, storedInputLang: cacheMatch.inputLang, learningLang, primaryLang });
+    return cacheMatch.cacheData.ai_insights;
   }
 
-  // 2. Fall back to per-user vocabulary row (already in memory from initial load).
-  //    Backfill word_cache so future lookups (any user) hit step 1.
+  // 2. Vocabulary row has ai_insights (from a prior session's AI call) — backfill
+  //    word_cache so any future user gets a step 1 hit, then return.
   if (word.ai_insights) {
-    console.log('[insights] step 2 hit — vocabulary, backfilling word_cache:', cacheKey);
-    // Fire-and-forget backfill — don't block the UI on the cache write.
-    setCachedExtra(wordLower, learningLang, learningLang, primaryLang, 'single', { ai_insights: word.ai_insights });
+    console.log('[insights] step 2 hit — vocabulary, backfilling word_cache:', { word: wordLower, learningLang, primaryLang, cacheRowFound: !!cacheMatch });
+    if (cacheMatch) {
+      // Fire-and-forget — use actual stored input_language, not the assumed learningLang.
+      setCachedExtra(wordLower, cacheMatch.inputLang, learningLang, primaryLang, 'single', { ai_insights: word.ai_insights });
+    }
     return word.ai_insights;
   }
 
@@ -98,14 +107,15 @@ export async function fetchInsights(word, primaryLang, signal) {
     else throw new Error('Could not parse insights response. Try again.');
   }
 
-  // 4. Write to both stores in parallel.
-  //    setCachedExtra logs whether the cache row exists; if not, the vocabulary write
-  //    still succeeds as the per-user fallback.
-  console.log('[insights] step 3 — AI call done, writing to cache + vocabulary:', cacheKey);
-  await Promise.all([
-    setCachedExtra(wordLower, learningLang, learningLang, primaryLang, 'single', { ai_insights: insights }),
-    updateWordDB(word.id, { ai_insights: insights }),
-  ]);
+  // 4. Write to both stores. Use the actual stored input_language for the cache UPDATE.
+  console.log('[insights] step 3 — AI done, writing:', { word: wordLower, learningLang, primaryLang, cacheRowFound: !!cacheMatch, storedInputLang: cacheMatch?.inputLang });
+  const writes = [updateWordDB(word.id, { ai_insights: insights })];
+  if (cacheMatch) {
+    writes.push(setCachedExtra(wordLower, cacheMatch.inputLang, learningLang, primaryLang, 'single', { ai_insights: insights }));
+  } else {
+    console.log('[insights] no cache row found for word — vocabulary-only write:', { word: wordLower, learningLang, primaryLang });
+  }
+  await Promise.all(writes);
 
   return insights;
 }
