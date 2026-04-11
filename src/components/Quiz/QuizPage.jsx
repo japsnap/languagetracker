@@ -68,18 +68,25 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
   const [langFilter, setLangFilter] = useState('');
 
   // Enter key advances to next word during revealed phase.
-  // Using a ref so the effect doesn't need to list startOrNext as a dep.
+  // Deferred via setTimeout(0) so the keydown that triggered the reveal
+  // (typed check via Enter) doesn't also immediately advance to the next word.
   const startOrNextRef = useRef(null);
   startOrNextRef.current = startOrNext;
   useEffect(() => {
     if (phase !== 'revealed') return;
-    function handleKeyDown(e) {
-      if (e.key !== 'Enter') return;
-      if (document.activeElement?.tagName === 'BUTTON') return;
-      startOrNextRef.current();
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+    let handler = null;
+    const tid = setTimeout(() => {
+      handler = (e) => {
+        if (e.key !== 'Enter') return;
+        if (document.activeElement?.tagName === 'BUTTON') return;
+        startOrNextRef.current();
+      };
+      document.addEventListener('keydown', handler);
+    }, 0);
+    return () => {
+      clearTimeout(tid);
+      if (handler) document.removeEventListener('keydown', handler);
+    };
   }, [phase]);
 
   // Set lang filter once when preferences load (preserves manual changes after that)
@@ -602,8 +609,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
 
             <div className={styles.revealDivider} />
             <div className={styles.revealGrid}>
-              {/* Normal mode: show meaning. Reverse mode: meaning was the question, skip it. */}
-              {!isHard && <RevealField label="Meaning" value={word.meaning} highlight />}
+              <RevealField label="Meaning" value={word.meaning} highlight />
               {word.example && <RevealField label="Example" value={word.example} italic />}
               {word.related_words && <RevealField label="Related words" value={word.related_words} />}
               {word.other_useful_notes && <RevealField label="Notes" value={word.other_useful_notes} />}
