@@ -104,10 +104,82 @@
 }
 .chartEmptySub { font-size: 0.8rem; color: var(--text-placeholder); }
 
+/* ── Quiz mode comparison ────────────────────────────────────────────────────── */
+
+.sectionTitle {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.75rem;
+}
+
+.modeGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.modeCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-top-width: 3px;
+  border-radius: var(--radius-lg);
+  padding: 1.25rem;
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.modeCardEasy { border-top-color: #2E7D32; }
+.modeCardHard { border-top-color: #1565C0; }
+
+.modeCardHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.modeCardTitle {
+  font-family: var(--font-heading);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.modeCardSub {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.modeCardEmpty {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  padding: 0.5rem 0;
+}
+
+.modeCardStats {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.modeStatRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.875rem;
+}
+
+.modeStatLabel { color: var(--text-secondary); }
+.modeStatValue { color: var(--text-primary); font-weight: 500; }
+
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
 
 @media (max-width: 700px) {
   .chartsRow { grid-template-columns: 1fr; }
+  .modeGrid  { grid-template-columns: 1fr; }
   .summaryGrid { grid-template-columns: 1fr 1fr; }
 }
 

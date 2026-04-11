@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell, AreaChart, Area,
 } from 'recharts';
 import { memorizationLevel } from '../../utils/vocabulary';
+import { supabase } from '../../utils/supabase';
 import styles from './StatsPage.module.css';
 
 const LEVEL_FILL = { A1: '#2E7D32', A2: '#81C784', B1: '#1565C0', B2: '#64B5F6', C1: '#7B1FA2', C2: '#E91E63' };
@@ -51,9 +52,53 @@ function computeStats(words) {
   return { total, mastered, neverReviewed, avgMem, accuracy, byLevel, hardest, mostReviewed, timeline };
 }
 
+// ── Quiz-mode stats (from user_events) ───────────────────────────────────────
+
+function computeQuizModeStats(events) {
+  const acc = {
+    easy: { total: 0, correct: 0, wrong: 0, notSure: 0 },
+    hard: { total: 0, correct: 0, wrong: 0, notSure: 0 },
+  };
+  for (const e of events) {
+    const mode   = e.metadata?.quiz_mode;
+    const answer = e.metadata?.answer;
+    if (mode !== 'easy' && mode !== 'hard') continue; // skip pre-mode events
+    acc[mode].total++;
+    if (answer === 'correct')   acc[mode].correct++;
+    else if (answer === 'wrong')     acc[mode].wrong++;
+    else if (answer === 'not-sure')  acc[mode].notSure++;
+  }
+  const withAccuracy = mode => ({
+    ...acc[mode],
+    accuracy: acc[mode].total > 0 ? Math.round((acc[mode].correct / acc[mode].total) * 100) : null,
+  });
+  return { easy: withAccuracy('easy'), hard: withAccuracy('hard') };
+}
+
 export default function StatsPage({ words }) {
   const stats = useMemo(() => computeStats(words), [words]);
   const masteredPct = stats.total > 0 ? Math.round((stats.mastered / stats.total) * 100) : 0;
+
+  // Fetch quiz events for mode-specific stats
+  const [quizEvents, setQuizEvents] = useState(null); // null = loading
+  useEffect(() => {
+    async function fetchQuizEvents() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) { setQuizEvents([]); return; }
+      const { data } = await supabase
+        .from('user_events')
+        .select('metadata')
+        .eq('event_type', 'quiz_answer')
+        .eq('user_id', user.id);
+      setQuizEvents(data || []);
+    }
+    fetchQuizEvents();
+  }, []);
+
+  const modeStats = useMemo(
+    () => (quizEvents ? computeQuizModeStats(quizEvents) : null),
+    [quizEvents]
+  );
 
   return (
     <div className={styles.page}>
@@ -201,7 +246,65 @@ export default function StatsPage({ words }) {
             )}
           </div>
         </div>
+
+        {/* Quiz Performance by Mode */}
+        <div>
+          <h2 className={styles.sectionTitle}>Quiz Performance by Mode</h2>
+          <div className={styles.modeGrid}>
+            <ModeCard mode="easy" stats={modeStats?.easy ?? null} loading={modeStats === null} />
+            <ModeCard mode="hard" stats={modeStats?.hard ?? null} loading={modeStats === null} />
+          </div>
+        </div>
+
       </div>
+    </div>
+  );
+}
+
+// ── Mode card ─────────────────────────────────────────────────────────────────
+
+function ModeCard({ mode, stats, loading }) {
+  const isEasy = mode === 'easy';
+  return (
+    <div className={`${styles.modeCard} ${isEasy ? styles.modeCardEasy : styles.modeCardHard}`}>
+      <div className={styles.modeCardHeader}>
+        <span className={styles.modeCardTitle}>{isEasy ? 'Easy Mode' : 'Hard Mode'}</span>
+        <span className={styles.modeCardSub}>
+          {isEasy ? 'Recognition · self-assessed' : 'Production · typed answers'}
+        </span>
+      </div>
+      {loading ? (
+        <p className={styles.modeCardEmpty}>Loading…</p>
+      ) : !stats || stats.total === 0 ? (
+        <p className={styles.modeCardEmpty}>No attempts yet</p>
+      ) : (
+        <div className={styles.modeCardStats}>
+          <ModeStatRow label="Total attempts" value={stats.total} />
+          <ModeStatRow label="Correct"        value={stats.correct}  color="#4caf79" />
+          <ModeStatRow label="Wrong"          value={stats.wrong}    color="#e07070" />
+          {isEasy && <ModeStatRow label="Not sure" value={stats.notSure} color="#e8a44a" />}
+          <ModeStatRow
+            label="Accuracy"
+            value={stats.accuracy !== null ? `${stats.accuracy}%` : '—'}
+            bold
+            color={isEasy ? '#2E7D32' : '#1565C0'}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ModeStatRow({ label, value, color, bold }) {
+  return (
+    <div className={styles.modeStatRow}>
+      <span className={styles.modeStatLabel}>{label}</span>
+      <span
+        className={styles.modeStatValue}
+        style={{ ...(color ? { color } : {}), ...(bold ? { fontWeight: 700 } : {}) }}
+      >
+        {value}
+      </span>
     </div>
   );
 }
