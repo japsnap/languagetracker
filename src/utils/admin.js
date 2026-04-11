@@ -31,7 +31,11 @@ export async function fetchAdminStats() {
   todayStart.setHours(0, 0, 0, 0);
   const todayISO = todayStart.toISOString();
 
-  const [lookupEventsRes, recentEventsRes, flagsRes, vocabCountRes, allUserIdsRes] = await Promise.all([
+  // Fetch session token once — needed for the server-side admin-stats endpoint.
+  const { data: { session } } = await supabase.auth.getSession();
+  const token = session?.access_token;
+
+  const [lookupEventsRes, recentEventsRes, flagsRes, adminStatsRes, allUserIdsRes] = await Promise.all([
     supabase
       .from('user_events')
       .select('user_id, metadata, created_at')
@@ -46,9 +50,9 @@ export async function fetchAdminStats() {
       .select('*')
       .eq('status', 'pending')
       .order('created_at', { ascending: false }),
-    supabase
-      .from('vocabulary')
-      .select('id', { count: 'exact', head: true }),
+    fetch('/api/admin-stats', {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then(r => r.ok ? r.json() : { total_words: 0 }).catch(() => ({ total_words: 0 })),
     supabase
       .from('user_events')
       .select('user_id'),
@@ -58,7 +62,7 @@ export async function fetchAdminStats() {
   const allUserIds = allUserIdsRes.data || [];
 
   const distinctUsers = new Set(allUserIds.map(e => e.user_id)).size;
-  const totalWords = vocabCountRes.count ?? 0;
+  const totalWords = adminStatsRes.total_words ?? 0;
   const lookupsToday = lookups.filter(e => e.created_at >= todayISO).length;
   const cacheHits = lookups.filter(e => e.metadata?.cache_hit === true).length;
   const cacheHitRate = lookups.length > 0 ? Math.round((cacheHits / lookups.length) * 100) : 0;
