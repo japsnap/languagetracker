@@ -27,8 +27,22 @@ import { supabase } from './supabase';
  * SQL migrations required for current fields:
  *   ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS recommended_level text;
  *   ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS base_form text;
+ *   ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS result_word text;
+ *
+ * To add a field where the column name differs from the AI response field name, also add
+ * an entry to CACHE_INDEXED_ALIASES: { columnName: 'responseFieldName' }.
  */
-const CACHE_INDEXED_FIELDS = ['part_of_speech', 'word_type', 'recommended_level', 'base_form'];
+const CACHE_INDEXED_FIELDS = ['part_of_speech', 'word_type', 'recommended_level', 'base_form', 'result_word'];
+
+/**
+ * Maps column names → AI response field names when they differ.
+ * result_word stores response.word (the AI-corrected learning-language word).
+ * This lets findCachedWordRow search by result_word to match vocabulary words
+ * (corrected/translated) back to their cache rows regardless of what the user typed.
+ */
+const CACHE_INDEXED_ALIASES = {
+  result_word: 'word',
+};
 
 /**
  * Dedicated JSONB columns stored alongside `response` for on-demand enrichment data.
@@ -51,11 +65,12 @@ const CACHE_EXTRA_JSONB_FIELDS = ['ai_insights'];
 function extractIndexedFields(response) {
   const src = Array.isArray(response) ? response[0] : response;
   if (!src || typeof src !== 'object') return {};
-  return Object.fromEntries(
-    CACHE_INDEXED_FIELDS
-      .filter(f => src[f] != null)
-      .map(f => [f, src[f]])
-  );
+  const result = {};
+  for (const field of CACHE_INDEXED_FIELDS) {
+    const srcField = CACHE_INDEXED_ALIASES[field] ?? field;
+    if (src[srcField] != null) result[field] = src[srcField];
+  }
+  return result;
 }
 
 /**
@@ -101,24 +116,27 @@ export async function getCachedWord(word, inputLang, learningLang, primaryLang, 
 }
 
 /**
- * Find a cache row by word + learning/primary/mode WITHOUT filtering on input_language.
- * Used by fetchInsights to locate the row regardless of how it was originally inserted
- * (direct lookup vs cross-language lookup may store different input_language values).
+ * Find a cache row for a vocabulary word without assuming input_language or input_word.
  *
- * Returns { inputLang, cacheData } where inputLang is the value to use for any
- * subsequent setCachedExtra UPDATE. Returns null if no row found.
+ * Searches by result_word (the AI-corrected learning-language word stored as a dedicated
+ * column) OR input_word as fallback for rows predating the result_word column. This
+ * resolves the mismatch where input_word is the raw typed text ("grinder", "buenisima")
+ * but vocabulary stores the corrected result ("molinillo", "buenísima").
  *
- * NOTE: if multiple rows exist for the same (word, learningLang, primaryLang, mode) with
- * different input_language values, .limit(1) returns one arbitrarily — acceptable here
- * since we only need any matching row to perform the extra-field update.
+ * Returns { inputLang, cacheData } — inputLang is the value to pass to setCachedExtra.
+ * Returns null if no row found (e.g. cross-language words cached before result_word was
+ * added, or words never cached).
  */
 export async function findCachedWordRow(word, learningLang, primaryLang, mode) {
   const normalized = word.toLowerCase().trim();
-  const selectCols = ['input_language', 'response', ...CACHE_INDEXED_FIELDS, ...CACHE_EXTRA_JSONB_FIELDS].join(', ');
+  const selectCols = ['input_word', 'input_language', 'result_word', 'response', ...CACHE_INDEXED_FIELDS, ...CACHE_EXTRA_JSONB_FIELDS].join(', ');
+
+  // Search by result_word OR input_word — result_word matches corrected/translated words;
+  // input_word fallback matches old rows and direct same-word lookups.
   const { data, error } = await supabase
     .from('word_cache')
     .select(selectCols)
-    .eq('input_word', normalized)
+    .or(`result_word.eq.${normalized},input_word.eq.${normalized}`)
     .eq('learning_language', learningLang)
     .eq('primary_language', primaryLang)
     .eq('mode', mode)
@@ -128,12 +146,15 @@ export async function findCachedWordRow(word, learningLang, primaryLang, mode) {
     console.error('[cache] findCachedWordRow failed:', error.message, { word: normalized, learningLang, primaryLang, mode });
     return null;
   }
-  if (!data || data.length === 0) return null;
+  if (!data || data.length === 0) {
+    console.log('[cache] findCachedWordRow: no row found', { word: normalized, learningLang, primaryLang, mode });
+    return null;
+  }
 
-  const { input_language, response, ...rest } = data[0];
+  const { input_word, input_language, response, ...rest } = data[0];
   const cacheData = Array.isArray(response) ? response : { ...rest, ...response };
-  console.log('[cache] findCachedWordRow:', { word: normalized, storedInputLang: input_language, learningLang, primaryLang, mode });
-  return { inputLang: input_language, cacheData };
+  console.log('[cache] findCachedWordRow hit:', { searchWord: normalized, storedInputWord: input_word, storedInputLang: input_language, learningLang, primaryLang, mode });
+  return { inputLang: input_language, inputWord: input_word, cacheData };
 }
 
 /**

@@ -57,7 +57,7 @@ export async function fetchInsights(word, primaryLang, signal) {
 
   // 1. Cache hit with ai_insights already populated — return immediately.
   if (cacheMatch?.cacheData?.ai_insights) {
-    console.log('[insights] step 1 hit — word_cache:', { word: wordLower, storedInputLang: cacheMatch.inputLang, learningLang, primaryLang });
+    console.log('[insights] step 1 hit — word_cache:', { word: wordLower, storedInputWord: cacheMatch.inputWord, storedInputLang: cacheMatch.inputLang, learningLang, primaryLang });
     return cacheMatch.cacheData.ai_insights;
   }
 
@@ -66,8 +66,8 @@ export async function fetchInsights(word, primaryLang, signal) {
   if (word.ai_insights) {
     console.log('[insights] step 2 hit — vocabulary, backfilling word_cache:', { word: wordLower, learningLang, primaryLang, cacheRowFound: !!cacheMatch });
     if (cacheMatch) {
-      // Fire-and-forget — use actual stored input_language, not the assumed learningLang.
-      setCachedExtra(wordLower, cacheMatch.inputLang, learningLang, primaryLang, 'single', { ai_insights: word.ai_insights });
+      // Use the stored input_word and input_language — both may differ from the vocabulary word.
+      setCachedExtra(cacheMatch.inputWord, cacheMatch.inputLang, learningLang, primaryLang, 'single', { ai_insights: word.ai_insights });
     }
     return word.ai_insights;
   }
