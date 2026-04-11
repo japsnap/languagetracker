@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { lookupWord, lookupWordSingle, lookupSecondary } from '../../utils/anthropic';
-import { localToday } from '../../utils/vocabulary';
+import { localToday, aiResultToWordFields } from '../../utils/vocabulary';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import styles from './InputPage.module.css';
 
@@ -8,7 +8,9 @@ const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
 
 const EMPTY_FIELDS = {
   word: '',
+  word_type: 'word',
   part_of_speech: '',
+  base_form: null,
   meaning: '',
   example: '',
   recommended_level: '',
@@ -126,17 +128,11 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       clearTimeout(timeoutId);
       const resultWord = result.word || term;
       setFields({
-        word:               resultWord,
-        part_of_speech:     result.part_of_speech     || '',
-        meaning:            result.meaning            || '',
-        example:            result.example            || '',
-        recommended_level:  result.recommended_level  || '',
-        related_words:      result.related_words      || '',
-        other_useful_notes: result.other_useful_notes || '',
-        romanization:       result.romanization       || '',
-        kana_reading:       result.kana_reading       || '',
-        meanings_array:     Array.isArray(result.meanings_array)    ? result.meanings_array    : null,
-        word_alternatives:  Array.isArray(result.word_alternatives) ? result.word_alternatives : null,
+        ...aiResultToWordFields(result),
+        word: resultWord,
+        // string fields shown in editable form inputs need '' not null
+        romanization: result.romanization || '',
+        kana_reading: result.kana_reading || '',
       });
       setPhase('preview');
       fireSecondaryLookups(resultWord.toLowerCase().trim(), secondaryLangs);
@@ -205,33 +201,17 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       if (existing) { setDuplicate(existing); return; }
     }
 
-    // Fall back to splitting the meaning field for old cached responses that lack meanings_array
-    const meaningsArray = (Array.isArray(fields.meanings_array) && fields.meanings_array.length > 0)
-      ? fields.meanings_array
-      : (fields.meaning ? fields.meaning.split(',').map(s => s.trim()).filter(Boolean) : null);
-
     const wordData = {
-      word:               fields.word.trim(),
-      part_of_speech:     fields.part_of_speech,
-      meaning:            fields.meaning,
-      example:            fields.example,
-      recommended_level:  fields.recommended_level,
-      related_words:      fields.related_words,
-      other_useful_notes: fields.other_useful_notes,
-      romanization:       fields.romanization       || null,
-      kana_reading:       fields.kana_reading       || null,
-      meanings_array:     meaningsArray,
-      word_alternatives:  (Array.isArray(fields.word_alternatives) && fields.word_alternatives.length > 0)
-                            ? fields.word_alternatives : null,
-      word_language:      learningLang,
-      date_added:         localToday(),
-      last_reviewed:      null,
-      total_attempts:     0,
-      error_counter:      0,
-      correct_streak:     0,
-      starred:            false,
-      mastered:           false,
-      scene:              null,
+      ...aiResultToWordFields(fields),
+      word_language:  learningLang,
+      date_added:     localToday(),
+      last_reviewed:  null,
+      total_attempts: 0,
+      error_counter:  0,
+      correct_streak: 0,
+      starred:        false,
+      mastered:       false,
+      scene:          null,
     };
 
     try {
@@ -252,33 +232,17 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     const c = candidates[index];
     if (!c) return;
 
-    // Fall back to splitting the meaning field for old cached responses that lack meanings_array
-    const cMeaningsArray = (Array.isArray(c.meanings_array) && c.meanings_array.length > 0)
-      ? c.meanings_array
-      : (c.meaning ? c.meaning.split(',').map(s => s.trim()).filter(Boolean) : null);
-
     const wordData = {
-      word:               (c.word || '').trim(),
-      part_of_speech:     c.part_of_speech     || '',
-      meaning:            c.meaning            || '',
-      example:            c.example            || '',
-      recommended_level:  c.recommended_level  || '',
-      related_words:      c.related_words      || '',
-      other_useful_notes: c.other_useful_notes || '',
-      romanization:       c.romanization       || null,
-      kana_reading:       c.kana_reading       || null,
-      meanings_array:     cMeaningsArray,
-      word_alternatives:  (Array.isArray(c.word_alternatives) && c.word_alternatives.length > 0)
-                            ? c.word_alternatives : null,
-      word_language:      learningLang,
-      date_added:         localToday(),
-      last_reviewed:      null,
-      total_attempts:     0,
-      error_counter:      0,
-      correct_streak:     0,
-      starred:            false,
-      mastered:           false,
-      scene:              null,
+      ...aiResultToWordFields(c),
+      word_language:  learningLang,
+      date_added:     localToday(),
+      last_reviewed:  null,
+      total_attempts: 0,
+      error_counter:  0,
+      correct_streak: 0,
+      starred:        false,
+      mastered:       false,
+      scene:          null,
     };
 
     try {

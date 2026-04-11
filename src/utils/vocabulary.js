@@ -66,3 +66,33 @@ export function memorizationLevel(word) {
   if (word.total_attempts < 3) return null;
   return Math.round(((word.total_attempts - word.error_counter) / word.total_attempts) * 100);
 }
+
+/**
+ * Map an AI result object to vocabulary row fields.
+ * Used by InputPage (preview + candidate saves) and ExploreMode (explore saves).
+ * Add new AI-returned fields here — all save paths update automatically.
+ * Fixed metadata (date_added, user_id, word_language, etc.) are merged in by the caller.
+ */
+export function aiResultToWordFields(r) {
+  // Fall back to splitting meaning for cached responses that predate meanings_array
+  const meaningsArray = (Array.isArray(r.meanings_array) && r.meanings_array.length > 0)
+    ? r.meanings_array
+    : (r.meaning ? r.meaning.split(',').map(s => s.trim()).filter(Boolean) : null);
+
+  return {
+    word:               (r.word || '').trim(),
+    word_type:          r.word_type          || 'word',
+    part_of_speech:     r.part_of_speech     || '',
+    base_form:          r.base_form          || null,
+    meaning:            r.meaning            || '',
+    example:            r.example            || '',
+    recommended_level:  r.recommended_level  || '',
+    related_words:      r.related_words      || '',
+    other_useful_notes: r.other_useful_notes || '',
+    romanization:       r.romanization       || null,
+    kana_reading:       r.kana_reading       || null,
+    meanings_array:     meaningsArray,
+    word_alternatives:  (Array.isArray(r.word_alternatives) && r.word_alternatives.length > 0)
+                          ? r.word_alternatives : null,
+  };
+}

@@ -4,6 +4,7 @@ import { SCENES } from '../../utils/sorting';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import FlagButton from '../FlagButton/FlagButton';
 import { logEvent } from '../../utils/events';
+import ExploreMode from './ExploreMode';
 import styles from './QuizPage.module.css';
 
 const ALL_LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -25,6 +26,37 @@ function stripDiacritics(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
+// Leading articles to strip before comparison, keyed by language code.
+// To add a new language: add an entry with its code and article list.
+// Languages with no articles (JA, KO, ZH, UR, HI) are omitted — no stripping needed.
+// NOTE: Future fill-in-the-blanks / grammar mode is a SEPARATE quiz type and must NOT
+// use this article-stripping logic — articles are part of the graded answer there.
+const LEADING_ARTICLES = {
+  ES: ['un', 'una', 'el', 'la', 'los', 'las'],
+  FR: ["l'", 'un', 'une', 'le', 'la', 'les'],
+  DE: ['ein', 'eine', 'der', 'die', 'das'],
+  IT: ['un', 'una', 'il', 'la', 'i', 'le'],
+  PT: ['um', 'uma', 'o', 'a', 'os', 'as'],
+  EN: ['a', 'an', 'the'],
+};
+
+// Strip a leading article from a normalised (lowercased, trimmed) string.
+// Articles are sorted longest-first so "l'" matches before "la" in French.
+function stripLeadingArticle(str, langCode) {
+  const articles = LEADING_ARTICLES[langCode];
+  if (!articles) return str;
+  const sorted = [...articles].sort((x, y) => y.length - x.length);
+  for (const art of sorted) {
+    // "l'" attaches directly; other articles are space-separated.
+    if (art.endsWith("'")) {
+      if (str.startsWith(art)) return str.slice(art.length).trim();
+    } else {
+      if (str.startsWith(art + ' ')) return str.slice(art.length).trim();
+    }
+  }
+  return str;
+}
+
 // Levenshtein distance — O(m*n), fine for short vocabulary words.
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
@@ -41,14 +73,21 @@ function levenshtein(a, b) {
 }
 
 // Accept if distance <= 1, except require exact match for words ≤ 3 chars.
-function answersMatch(input, correct) {
+// Leading articles (language-specific) are stripped from both sides before comparison.
+// NOTE: Future fill-in-the-blanks / grammar mode is a SEPARATE quiz type and must NOT
+// use this comparison function — articles will be part of the graded answer there.
+function answersMatch(input, correct, langCode = null) {
   const norm = s => stripDiacritics(s.toLowerCase().trim());
-  const a = norm(input), b = norm(correct);
+  let a = norm(input), b = norm(correct);
+  if (langCode) {
+    a = stripLeadingArticle(a, langCode);
+    b = stripLeadingArticle(b, langCode);
+  }
   if (b.length <= 3) return a === b;
   return levenshtein(a, b) <= 1;
 }
 
-export default function QuizPage({ words, onUpdateWord, preferences }) {
+export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }) {
   const [settings, setSettings] = useState({
     levels: [],
     starredOnly: false,
@@ -64,6 +103,7 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
   const [prevEntry, setPrevEntry] = useState(null); // { word, answer, hasChanged, session, typedAnswer }
   const [canGoBack, setCanGoBack] = useState(false);
   const [quizMode, setQuizMode] = useState('easy'); // 'easy' | 'hard'
+  const [exploreMode, setExploreMode] = useState(() => words.length === 0);
   const [typedAnswer, setTypedAnswer] = useState('');
   const [langFilter, setLangFilter] = useState('');
 
@@ -221,9 +261,10 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
   // Hard mode: compare typed input against the word and any stored alternatives.
   function handleCheckAnswer(typed) {
     if (!typed.trim() || !current) return;
-    const isCorrect = answersMatch(typed, current.word) ||
+    const lang = current.word_language || preferences?.learning_language || null;
+    const isCorrect = answersMatch(typed, current.word, lang) ||
       (Array.isArray(current.word_alternatives) &&
-        current.word_alternatives.some(alt => answersMatch(typed, alt)));
+        current.word_alternatives.some(alt => answersMatch(typed, alt, lang)));
     handleAnswer(isCorrect ? 'correct' : 'wrong');
   }
 
@@ -280,25 +321,32 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
       {/* Settings strip */}
       <div className={styles.settingsStrip}>
 
-        {/* Mode toggle */}
+        {/* Mode toggle — Easy / Hard / Explore */}
         <div className={styles.settingsGroup}>
           <span className={styles.settingsLabel}>Mode:</span>
           <button
-            className={`${styles.levelBtn} ${quizMode === 'easy' ? styles.levelActive : ''}`}
-            onClick={() => setQuizMode('easy')}
+            className={`${styles.levelBtn} ${!exploreMode && quizMode === 'easy' ? styles.levelActive : ''}`}
+            onClick={() => { setExploreMode(false); setQuizMode('easy'); }}
           >
             Easy
           </button>
           <button
-            className={`${styles.levelBtn} ${quizMode === 'hard' ? styles.levelActive : ''}`}
-            onClick={() => setQuizMode('hard')}
+            className={`${styles.levelBtn} ${!exploreMode && quizMode === 'hard' ? styles.levelActive : ''}`}
+            onClick={() => { setExploreMode(false); setQuizMode('hard'); }}
           >
             Hard
           </button>
+          <button
+            className={`${styles.levelBtn} ${exploreMode ? styles.levelActive : ''}`}
+            onClick={() => setExploreMode(true)}
+          >
+            Explore
+          </button>
         </div>
 
+        {/* Quiz-specific settings — hidden in explore mode (ExploreMode has its own level row) */}
         {/* Language filter — only shown if vocabulary has words in multiple languages */}
-        {vocabLangs.length > 1 && (
+        {!exploreMode && vocabLangs.length > 1 && (
           <div className={styles.settingsGroup}>
             <span className={styles.settingsLabel}>Language:</span>
             <button
@@ -323,69 +371,77 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
           </div>
         )}
 
-        <div className={styles.settingsGroup}>
-          <span className={styles.settingsLabel}>Level:</span>
-          <button
-            className={`${styles.levelBtn} ${settings.levels.length === 0 ? styles.levelActive : ''}`}
-            onClick={() => setSettings(s => ({ ...s, levels: [] }))}
-          >
-            All
-          </button>
-          {ALL_LEVELS.map(lvl => {
-            const active = settings.levels.includes(lvl);
-            return (
-              <button
-                key={lvl}
-                className={`${styles.levelBtn} ${active ? styles.levelActive : ''}`}
-                style={active ? { backgroundColor: LEVEL_COLORS[lvl], borderColor: LEVEL_COLORS[lvl], color: '#fff' } : {}}
-                onClick={() => toggleLevel(lvl)}
-              >
-                {lvl}
-              </button>
-            );
-          })}
-        </div>
+        {!exploreMode && (
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Level:</span>
+            <button
+              className={`${styles.levelBtn} ${settings.levels.length === 0 ? styles.levelActive : ''}`}
+              onClick={() => setSettings(s => ({ ...s, levels: [] }))}
+            >
+              All
+            </button>
+            {ALL_LEVELS.map(lvl => {
+              const active = settings.levels.includes(lvl);
+              return (
+                <button
+                  key={lvl}
+                  className={`${styles.levelBtn} ${active ? styles.levelActive : ''}`}
+                  style={active ? { backgroundColor: LEVEL_COLORS[lvl], borderColor: LEVEL_COLORS[lvl], color: '#fff' } : {}}
+                  onClick={() => toggleLevel(lvl)}
+                >
+                  {lvl}
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-        <div className={styles.settingsGroup}>
-          <span className={styles.settingsLabel}>Scene:</span>
-          <select
-            className={styles.sceneSelect}
-            value={settings.scene}
-            onChange={e => setSettings(s => ({ ...s, scene: e.target.value }))}
-          >
-            <option value="">All</option>
-            {SCENES.map(s => (
-              <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-            ))}
-          </select>
-        </div>
+        {!exploreMode && (
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Scene:</span>
+            <select
+              className={styles.sceneSelect}
+              value={settings.scene}
+              onChange={e => setSettings(s => ({ ...s, scene: e.target.value }))}
+            >
+              <option value="">All</option>
+              {SCENES.map(s => (
+                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
-        <div className={styles.settingsGroup}>
-          <label className={styles.checkLabel}>
-            <input
-              type="checkbox"
-              checked={settings.starredOnly}
-              onChange={() => toggleSetting('starredOnly')}
-            />
-            Starred only
-          </label>
-          <label className={styles.checkLabel}>
-            <input
-              type="checkbox"
-              checked={settings.includeMastered}
-              onChange={() => toggleSetting('includeMastered')}
-            />
-            Include mastered
-          </label>
-        </div>
+        {!exploreMode && (
+          <div className={styles.settingsGroup}>
+            <label className={styles.checkLabel}>
+              <input
+                type="checkbox"
+                checked={settings.starredOnly}
+                onChange={() => toggleSetting('starredOnly')}
+              />
+              Starred only
+            </label>
+            <label className={styles.checkLabel}>
+              <input
+                type="checkbox"
+                checked={settings.includeMastered}
+                onChange={() => toggleSetting('includeMastered')}
+              />
+              Include mastered
+            </label>
+          </div>
+        )}
 
-        <div className={styles.poolCount}>
-          Pool: <strong>{pool.length}</strong> word{pool.length !== 1 ? 's' : ''}
-        </div>
+        {!exploreMode && (
+          <div className={styles.poolCount}>
+            Pool: <strong>{pool.length}</strong> word{pool.length !== 1 ? 's' : ''}
+          </div>
+        )}
       </div>
 
-      {/* Session stats */}
-      {phase !== 'idle' && (
+      {/* Session stats — quiz only */}
+      {!exploreMode && phase !== 'idle' && (
         <div className={styles.statsStrip}>
           <span className={styles.statItem}>
             Reviewed: <strong>{reviewed}</strong>
@@ -405,7 +461,17 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
         </div>
       )}
 
-      {/* Main area */}
+      {/* Explore mode fills remaining space (has its own layout) */}
+      {exploreMode && (
+        <ExploreMode
+          preferences={preferences}
+          words={words}
+          onAddWord={onAddWord}
+        />
+      )}
+
+      {/* Quiz mode main area */}
+      {!exploreMode && (
       <div className={styles.main}>
         {phase === 'idle' && (
           <IdleScreen pool={pool} onStart={startOrNext} />
@@ -434,6 +500,7 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
           <DoneScreen session={session} reviewed={reviewed} onRestart={restart} />
         )}
       </div>
+      )}
     </div>
   );
 }

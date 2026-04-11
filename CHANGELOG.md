@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-04-17
+
+- **More Info panel on word detail** — "More info ▼" button added to the expanded word row in Review. On first tap: checks `word.ai_insights` (populated from a prior session via DB); if null, calls AI and saves the result to `vocabulary.ai_insights` (JSONB). No API call on subsequent opens — the word prop is kept fresh by `useVocabulary`'s optimistic update. Panel renders etymology, register (colored badge), 3 common collocations with examples, and a cultural note.
+- **Extensible insights renderer** — `InsightsPanel.jsx` uses a `INSIGHTS_SECTIONS` config array (key, label, type). Adding a new field (false_friends, mnemonic, etc.) requires: one entry in `INSIGHTS_SECTIONS` + one update to `buildInsightsPrompt`. `RENDERERS` maps types (text, badge, collocations, list) to render functions; adding a novel data shape requires only a new renderer entry. `fetchInsights` in `insights.js` stores the raw JSONB and requires no changes for new fields.
+- **Insights API prompt** — `api/anthropic.js` new `buildInsightsPrompt` for `mode='insights'`. Client sends `{ word, part_of_speech, learning_language, primary_language, mode: 'insights' }`. Prompt requests: etymology (1-2 sentences), register (one of 6 values), exactly 3 collocations `{ phrase, example }`, cultural_note. `MAX_TOKENS.insights = 600`.
+- **SQL migration required** — `ALTER TABLE vocabulary ADD COLUMN IF NOT EXISTS ai_insights jsonb;`
+
+## 2026-04-16
+
+- **Explore mode** — new third mode in the Quiz tab (Easy | Hard | **Explore**). Auto-activates when the user has 0 words. Level chips (A1–C2, default A1) replace quiz settings when Explore is active. Each card flips on tap: front shows the word + romanization; back shows part-of-speech, meaning, example, and related words. "Next word →" always visible; "+ Save to my vocabulary" appears after flip (disabled if already in vocabulary or already saved this session). Duplicate check compares against the live `words` prop so saves made during the session are immediately reflected.
+- **Explore word serving** — `src/utils/explore.js` `fetchExploreWord`: (1) queries `word_cache` for a random unseen entry matching `(learning_language, primary_language, level, word_type)` via new `getRandomCachedExploreWord` in `cache.js` — zero AI cost on cache hit; (2) falls back to a fresh AI call (`mode: 'explore'`); (3) saves the AI response to `word_cache` immediately so future sessions reuse it. Seen words are tracked per session (reset on level/language change). Extensibility: phrase/idiom filtering → pass `wordType`; community pools → add a `pool` param to `fetchExploreWord` without touching `ExploreMode` component.
+- **Explore API prompt** — `api/anthropic.js` new `buildExplorePrompt` for `mode='explore'`. Client sends `{ learning_language, primary_language, level, word_type, mode: 'explore' }` — no input word. Returns same JSON shape as standard single lookup. `VALID_LEVELS` and `VALID_WORD_TYPES` server-side sets added for validation. `userMessage` is `'Generate.'`
+- **`recommended_level` cache column** — added to `CACHE_INDEXED_FIELDS` in `cache.js`. All future cache writes store `recommended_level` as a dedicated column, enabling the explore mode query (`WHERE recommended_level = 'A1'`). SQL migration required: `ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS recommended_level text;`
+- **`aiResultToWordFields` moved to `vocabulary.js`** — shared helper now exported from `src/utils/vocabulary.js`. `InputPage.jsx` imports it from there; `ExploreMode.jsx` uses it for the same save path. Adding a new AI-returned field still requires only one edit.
+
+## 2026-04-15
+
+- **word_type and base_form fields** — AI prompt (`api/anthropic.js`) now returns two new fields: `word_type` ("word" | "phrase" | "idiom", AI-detected from input) and `base_form` (infinitive/dictionary form for verbs, null otherwise). Both saved to vocabulary on word add via the shared `aiResultToWordFields` helper. `MAX_TOKENS` bumped: single 600→700, multi 1800→2000.
+- **Extensible vocabulary save** — `InputPage.jsx` now has a single `aiResultToWordFields(result)` helper used by both the preview save and candidate save paths. Adding a new AI-returned field now only requires updating this one function.
+- **Extensible cache indexed columns** — `src/utils/cache.js` introduces `CACHE_INDEXED_FIELDS` (`['part_of_speech', 'word_type']`). `setCachedWord` automatically extracts these from the AI response and stores them as dedicated columns alongside the `response` JSONB. `getCachedWord` selects all indexed columns and merges them into single-mode responses as a fallback for pre-migration cache entries. Adding a new indexed column requires: one SQL `ALTER TABLE word_cache ADD COLUMN`, one entry in `CACHE_INDEXED_FIELDS`. Requires SQL migration: `ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS word_type text; ALTER TABLE vocabulary ADD COLUMN IF NOT EXISTS word_type text DEFAULT 'word'; ALTER TABLE vocabulary ADD COLUMN IF NOT EXISTS base_form text;`
+
+## 2026-04-14
+
+- **Hard mode article stripping** — `answersMatch` in `QuizPage.jsx` now strips leading articles from both the typed answer and the stored word before running Levenshtein comparison. Language-specific article lists live in `LEADING_ARTICLES` (ES, FR, DE, IT, PT, EN); languages without articles (JA/KO/ZH/UR/HI) are unaffected. Stripping is exact — no fuzzy prefix matching. Lang code resolved from `current.word_language` then `preferences.learning_language`. Rules documented in `.claude/rules/quiz-answer-matching.md`. Future fill-in-the-blanks / grammar mode is a separate quiz type and will NOT use this logic.
+
 ## 2026-04-13
 
 - **Word cache fixed** — `word_cache` upserts were silently failing because the required UNIQUE constraint was never created. `scripts/migrations/001_word_cache_three_role.sql` added and run in Supabase SQL Editor — creates `word_cache_three_role_key UNIQUE(input_word, input_language, learning_language, primary_language, mode)`. Old `direction` column was also causing 400 errors; resolved. Cache now writes and reads correctly (confirmed 200 responses).

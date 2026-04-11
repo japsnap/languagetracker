@@ -286,6 +286,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
                       colCount={colCount}
                       showLangBadge={hasMultipleLangs}
                       anchorLetter={alphaAnchorMap.get(word.id)}
+                      primaryLang={preferences?.primary_language || 'en'}
                     />
                   ))}
                 </tbody>

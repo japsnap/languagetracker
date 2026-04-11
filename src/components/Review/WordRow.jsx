@@ -1,6 +1,9 @@
+import { useState, useRef } from 'react';
 import { memorizationLevel } from '../../utils/vocabulary';
+import { fetchInsights } from '../../utils/insights';
 import { SCENES } from '../../utils/sorting';
 import FlagButton from '../FlagButton/FlagButton';
+import InsightsPanel from './InsightsPanel';
 import styles from './WordRow.module.css';
 
 const LEVEL_COLORS = {
@@ -15,9 +18,50 @@ const LEVEL_COLORS = {
 export default function WordRow({
   word, isExpanded, onToggleExpand, onToggleStar, onUpdateWord,
   selectMode, isSelected, onToggleSelect, colCount, showLangBadge,
-  anchorLetter,
+  anchorLetter, primaryLang,
 }) {
   const memLevel = memorizationLevel(word);
+
+  // ── More Info / insights state ────────────────────────────────────────────
+  const [insightsOpen,  setInsightsOpen]  = useState(false);
+  const [insightsPhase, setInsightsPhase] = useState('idle'); // idle | loading | ready | error
+  const [insightsError, setInsightsError] = useState('');
+  const [insights,      setInsights]      = useState(null);  // local copy for this session
+  const abortRef = useRef(null);
+
+  async function handleMoreInfo(e) {
+    e.stopPropagation();
+    if (insightsOpen) { setInsightsOpen(false); return; }
+
+    setInsightsOpen(true);
+
+    // Already have insights (either from DB on the word prop or local session cache)
+    const existing = insights || word.ai_insights;
+    if (existing) {
+      setInsights(existing);
+      setInsightsPhase('ready');
+      return;
+    }
+
+    if (abortRef.current) abortRef.current.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    setInsightsPhase('loading');
+    setInsightsError('');
+
+    try {
+      const result = await fetchInsights(word, primaryLang || 'en', controller.signal);
+      setInsights(result);
+      setInsightsPhase('ready');
+      // Propagate to parent so word.ai_insights is populated for future row expansions
+      onUpdateWord(word.id, { ai_insights: result });
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      setInsightsError(err.message || 'Something went wrong.');
+      setInsightsPhase('error');
+    }
+  }
 
   function handleRowClick() {
     if (selectMode) onToggleSelect(word.id);
@@ -142,7 +186,35 @@ export default function WordRow({
               <div className={styles.detailActions}>
                 <FlagButton wordId={word.id} wordText={word.word} />
               </div>
+
+              {/* More Info trigger — spans full width */}
+              <div className={styles.moreInfoRow}>
+                <button
+                  className={`${styles.moreInfoBtn} ${insightsOpen ? styles.moreInfoBtnOpen : ''}`}
+                  onClick={handleMoreInfo}
+                >
+                  {insightsOpen ? 'Less info ▲' : 'More info ▼'}
+                </button>
+              </div>
             </div>
+
+            {/* Insights panel — shown below the detail grid when open */}
+            {insightsOpen && (
+              <div className={styles.insightsWrap}>
+                {insightsPhase === 'loading' && (
+                  <div className={styles.insightsLoading}>
+                    <span className={styles.insightsSpinner} />
+                    <span>Loading insights…</span>
+                  </div>
+                )}
+                {insightsPhase === 'error' && (
+                  <p className={styles.insightsError}>{insightsError}</p>
+                )}
+                {insightsPhase === 'ready' && (
+                  <InsightsPanel insights={insights || word.ai_insights} />
+                )}
+              </div>
+            )}
           </td>
         </tr>
       )}

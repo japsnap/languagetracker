@@ -1,0 +1,252 @@
+/* ── Outer layout ───────────────────────────────────────────────────────────── */
+
+/* Fills the flex-1 space below the quiz settings strip */
+.wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+/* Level chip row — matches quiz settings strip style */
+.levelRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+
+/* Scrollable content area */
+.main {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 2rem 1rem 3rem;
+}
+
+/* ── Loading / error ────────────────────────────────────────────────────────── */
+
+.loadingWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 4rem;
+}
+
+.spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--text-secondary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.loadingText {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.errorWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 3rem;
+}
+
+.errorMsg {
+  color: var(--error);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* ── Card area ──────────────────────────────────────────────────────────────── */
+
+.cardArea {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 540px;
+}
+
+/* Perspective wrapper — required for 3D transform */
+.scene {
+  perspective: 1200px;
+  width: 100%;
+}
+
+/* The card — rotates as a whole */
+.card {
+  display: grid;
+  grid-template-areas: "face";
+  transform-style: preserve-3d;
+  transition: transform 0.45s ease;
+  cursor: pointer;
+  width: 100%;
+  border-radius: var(--radius-xl);
+}
+.card:not(.cardFlipped):hover { transform: translateY(-2px); }
+.cardFlipped {
+  transform: rotateY(180deg);
+  cursor: default;
+}
+
+/* Both faces occupy the same grid cell */
+.front,
+.back {
+  grid-area: face;
+  backface-visibility: hidden;
+  background: var(--bg-card);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-md);
+  padding: 2rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-height: 280px;
+}
+
+/* Back is pre-rotated so it shows when the card flips */
+.back {
+  transform: rotateY(180deg);
+  align-items: flex-start;
+}
+
+/* ── Face header ────────────────────────────────────────────────────────────── */
+
+.faceHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.typeBadge {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  text-transform: capitalize;
+}
+
+/* ── Front face content ─────────────────────────────────────────────────────── */
+
+.wordBig {
+  font-family: var(--font-heading);
+  font-size: clamp(2.25rem, 8vw, 3.5rem);
+  font-weight: 700;
+  color: var(--text-primary);
+  text-align: center;
+  padding: 1.5rem 0 0.75rem;
+  word-break: break-word;
+  width: 100%;
+}
+
+.tapHint {
+  margin-top: auto;
+  padding-top: 1.25rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+/* ── Back face content ──────────────────────────────────────────────────────── */
+
+.wordSmall {
+  font-family: var(--font-heading);
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0.35rem 0 0.1rem;
+  word-break: break-word;
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.85rem 0 0.95rem;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.revealArea {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.meaning {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  font-family: var(--font-heading);
+  line-height: 1.4;
+}
+
+.example {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.related {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/* ── Action buttons ─────────────────────────────────────────────────────────── */
+
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.saveBtn {
+  width: 100%;
+  padding: 0.7rem;
+  background: var(--olive-bg);
+  border: 1px solid var(--olive);
+  border-radius: var(--radius-md);
+  color: var(--olive);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.saveBtn:hover:not(:disabled) { background: #ddeedd; }
+.saveBtn:disabled { opacity: 0.5; cursor: default; }
+.saveBtnDone {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
+
+@media (max-width: 480px) {
+  .front,
+  .back { padding: 1.5rem 1.25rem; }
+  .wordBig { font-size: clamp(1.75rem, 10vw, 2.5rem); }
+}

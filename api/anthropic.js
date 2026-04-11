@@ -77,8 +77,10 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
 
 {
   "word": "the word translated into ${learning} (corrected spelling if needed)",
+  "word_type": "word" | "phrase" | "idiom" — classify the input: 'word' for single dictionary words, 'phrase' for multi-word expressions, 'idiom' for idiomatic expressions whose meaning differs from the literal words",
   "word_alternatives": ["up to 3 synonyms in ${learning} that are also valid translations for the same concept — do not repeat the main word; use empty array if none exist"],
-  "part_of_speech": "in ${primary}: noun / verb / adjective / phrase / etc.",
+  "part_of_speech": "in ${primary}: noun / verb / adjective / phrase / idiom / etc.",
+  "base_form": "if part_of_speech is a verb: the infinitive or dictionary form in ${learning} (e.g. 'hablar' for 'hablo'); otherwise null",
   "meaning": "clear meaning in ${primary}. If there are multiple meanings, separate them with commas (e.g., 'weak, feeble, frail'). Do not use slashes or semicolons.",
   "meanings_array": ["up to 4 distinct meanings or translations in ${primary}, first is most common — include synonyms a learner might reasonably answer"],
   "example": "a natural sentence in ${learning} using the word",
@@ -114,7 +116,67 @@ function buildSecondaryPrompt(sourceLang, targetLang) {
 }`;
 }
 
-const MAX_TOKENS = { single: 600, multi: 1800, secondary: 300 };
+function buildExplorePrompt(learningLang, primaryLang, level, wordType) {
+  const learning = LANGUAGE_NAMES[learningLang];
+  const primary  = LANGUAGE_NAMES[primaryLang];
+
+  const romaFields = NON_LATIN.has(learningLang) ? [
+    `  "romanization": "English-readable pronunciation (${
+      learningLang === 'ja' ? 'romaji' :
+      learningLang === 'zh' ? 'pinyin with tone marks' :
+      'romanized form'
+    })"`,
+    ...(learningLang === 'ja' ? ['  "kana_reading": "full hiragana or katakana reading of the word"'] : []),
+  ] : [];
+  const extraFieldsStr = romaFields.length ? ',\n' + romaFields.join(',\n') : '';
+
+  return `You are a language learning expert. Choose ONE random ${level}-level ${wordType} in ${learning} that a learner at that level should know. Vary your choices — do not repeat the most common filler words. Respond with ONLY a valid JSON object — no markdown fences, no explanation. The meaning, part_of_speech, and notes must be in ${primary}. Use exactly these fields:
+
+{
+  "word": "a ${level}-level ${wordType} in ${learning}",
+  "word_type": "${wordType}",
+  "word_alternatives": ["up to 3 synonyms in ${learning} — empty array if none"],
+  "part_of_speech": "in ${primary}: noun / verb / adjective / etc.",
+  "base_form": "if part_of_speech is a verb: the infinitive in ${learning}; otherwise null",
+  "meaning": "clear meaning in ${primary}, comma-separated if multiple",
+  "meanings_array": ["up to 4 distinct meanings in ${primary}"],
+  "example": "a natural ${level}-appropriate sentence in ${learning}",
+  "recommended_level": "${level}",
+  "related_words": "comma-separated related words in ${learning}, or empty string",
+  "other_useful_notes": "grammar notes, usage tips in ${primary}, or empty string"${extraFieldsStr}
+}`;
+}
+
+function buildInsightsPrompt(learningLang, primaryLang, wordText, partOfSpeech) {
+  const learning = LANGUAGE_NAMES[learningLang];
+  const primary  = LANGUAGE_NAMES[primaryLang];
+  const pos      = partOfSpeech ? ` (${partOfSpeech})` : '';
+
+  return `You are a language learning expert. For the ${learning} word "${wordText}"${pos}, provide enrichment information for learners. Respond with ONLY a valid JSON object — no markdown fences, no explanation. Write all explanations in ${primary}. Use exactly these fields:
+
+{
+  "etymology": "brief etymology: language of origin, root meaning, how the word evolved — 1-2 sentences",
+  "register": "exactly one of: formal | informal | colloquial | slang | written-only | neutral",
+  "collocations": [
+    { "phrase": "common collocation in ${learning}", "example": "natural example sentence in ${learning}" },
+    { "phrase": "...", "example": "..." },
+    { "phrase": "...", "example": "..." }
+  ],
+  "cultural_note": "one engaging cultural or historical note about this word, written conversationally in ${primary}"
+}
+
+Return exactly 3 collocations.`;
+}
+
+// To add a new insights field (e.g. false_friends, mnemonic):
+//   1. Add it to buildInsightsPrompt above.
+//   2. Add its key to INSIGHTS_SECTIONS in InsightsPanel.jsx.
+//   The fetch and DB-save logic in insights.js requires no changes.
+
+const MAX_TOKENS = { single: 700, multi: 2000, secondary: 300, explore: 700, insights: 600 };
+
+const VALID_LEVELS    = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
+const VALID_WORD_TYPES = new Set(['word', 'phrase', 'idiom']);
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -160,22 +222,59 @@ export default async function handler(req, res) {
   }
 
   // Validate client payload
-  const { word, input_language, learning_language, primary_language, mode } = req.body ?? {};
-  if (
-    typeof word !== 'string' || !word.trim() ||
-    (mode !== 'secondary' && !VALID_CODES.has(input_language)) ||
-    !VALID_CODES.has(learning_language) ||
-    !VALID_CODES.has(primary_language) ||
-    (mode !== 'single' && mode !== 'multi' && mode !== 'secondary')
-  ) {
-    return res.status(400).json({ error: 'Invalid request payload' });
+  const {
+    word, input_language, learning_language, primary_language,
+    mode, level, word_type, part_of_speech,
+  } = req.body ?? {};
+
+  let systemPrompt, userMessage;
+
+  if (mode === 'explore') {
+    // Explore mode: AI generates a random word — no input word needed
+    if (
+      !VALID_CODES.has(learning_language) ||
+      !VALID_CODES.has(primary_language) ||
+      !VALID_LEVELS.has(level) ||
+      !VALID_WORD_TYPES.has(word_type)
+    ) {
+      return res.status(400).json({ error: 'Invalid request payload' });
+    }
+    systemPrompt = buildExplorePrompt(learning_language, primary_language, level, word_type);
+    userMessage  = 'Generate.';
+
+  } else if (mode === 'insights') {
+    // Insights mode: enrichment for a saved vocabulary word
+    if (
+      typeof word !== 'string' || !word.trim() ||
+      !VALID_CODES.has(learning_language) ||
+      !VALID_CODES.has(primary_language)
+    ) {
+      return res.status(400).json({ error: 'Invalid request payload' });
+    }
+    systemPrompt = buildInsightsPrompt(
+      learning_language, primary_language, word.trim(), part_of_speech || ''
+    );
+    userMessage = word.trim();
+
+  } else {
+    // Standard modes: require an input word
+    if (
+      typeof word !== 'string' || !word.trim() ||
+      (mode !== 'secondary' && !VALID_CODES.has(input_language)) ||
+      !VALID_CODES.has(learning_language) ||
+      !VALID_CODES.has(primary_language) ||
+      (mode !== 'single' && mode !== 'multi' && mode !== 'secondary')
+    ) {
+      return res.status(400).json({ error: 'Invalid request payload' });
+    }
+    // For secondary mode, learning_language = source, primary_language = target
+    systemPrompt = mode === 'secondary'
+      ? buildSecondaryPrompt(learning_language, primary_language)
+      : buildPrimaryPrompt(input_language, learning_language, primary_language, mode);
+    userMessage = word.trim();
   }
 
-  // For secondary mode, input_language doubles as source, learning_language as target
-  const systemPrompt = mode === 'secondary'
-    ? buildSecondaryPrompt(learning_language, primary_language)
-    : buildPrimaryPrompt(input_language, learning_language, primary_language, mode);
-  const maxTokens = MAX_TOKENS[mode];
+  const maxTokens = MAX_TOKENS[mode] ?? MAX_TOKENS.single;
 
   const apiKey = process.env[PROVIDER.apiKeyEnvVar];
   if (!apiKey) {
@@ -190,7 +289,7 @@ export default async function handler(req, res) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify(buildUpstreamRequest(systemPrompt, word.trim(), maxTokens)),
+      body: JSON.stringify(buildUpstreamRequest(systemPrompt, userMessage, maxTokens)),
     });
 
     const data = await upstream.json();
