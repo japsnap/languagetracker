@@ -35,7 +35,11 @@ export async function getCachedWord(word, inputLang, learningLang, primaryLang, 
     .eq('mode', mode)
     .maybeSingle();
 
-  if (error || !data) return null;
+  if (error) {
+    console.error('[cache] getCachedWord failed:', error.message, { word: normalized, inputLang, learningLang, primaryLang, mode });
+    return null;
+  }
+  if (!data) return null;
   return data.response;
 }
 
@@ -44,10 +48,13 @@ export async function getCachedWord(word, inputLang, learningLang, primaryLang, 
  */
 export async function setCachedWord(word, inputLang, learningLang, primaryLang, mode, response) {
   const normalized = word.toLowerCase().trim();
-  await supabase
+  const { error } = await supabase
     .from('word_cache')
     .upsert(
       { input_word: normalized, input_language: inputLang, learning_language: learningLang, primary_language: primaryLang, mode, response },
       { onConflict: 'input_word,input_language,learning_language,primary_language,mode' }
     );
+  if (error) {
+    console.error('[cache] setCachedWord failed:', error.message, { word: normalized, inputLang, learningLang, primaryLang, mode });
+  }
 }

@@ -121,8 +121,10 @@ export async function lookupSecondary(word, sourceLanguage, targetLanguage, sign
   // Cache key: input_language unused for secondary; use sourceLanguage for both input and learning slots
   const cached = await getCachedWord(normalized, sourceLanguage, sourceLanguage, targetLanguage, 'secondary');
   if (cached !== null) {
+    logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'secondary', cache_hit: true });
     return cached;
   }
+  logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'secondary', cache_hit: false });
 
   // Server: secondary mode uses learning_language as source, primary_language as target
   const text = await callAPI(
