@@ -2,8 +2,14 @@
 
 ## 2026-04-19
 
-- **AI Insights cached to word_cache (FIX 1)** — `fetchInsights` in `insights.js` now checks `word_cache` (mode=`'insights'`) before calling the AI. On API call, insights are written to both `word_cache` (shared, cross-user) and `vocabulary.ai_insights` (per-user fast path) in parallel. Cache key: `(word, learningLang, learningLang, primaryLang, 'insights')`. Any future user viewing the same word in the same language pair skips the AI call entirely. No SQL migration required — `'insights'` is a new value in the existing `mode` text column; insights JSONB is stored in the existing `response` column. Future enrichment types (e.g. false_friends) follow the same pattern with a new mode string.
-- **Explore mode: removed session exclusion list (FIX 2)** — `seenWords` state, setter, and passing removed from `ExploreMode.jsx`. `fetchExploreWord` no longer accepts a `seenWords` param. `getRandomCachedExploreWord` no longer filters seen words — selection is purely random from the full cache pool. Word selection strategy will be replaced with a seed table approach (`word_seeds`) in a future session.
+- **Secondary card meanings in own language (FIX 1)** — Secondary mini-cards now show meaning in the card's own target language (e.g. Urdu card shows meaning in Urdu, Portuguese card in Portuguese). Previously `meaningLang` was always set to the user's primary language. `fireSecondaryLookups` now passes `c` (the target language) as both `targetLanguage` and `meaningLanguage` to `lookupSecondary`. Cache key updates accordingly: old secondary entries become cache misses.
+- **base_form added to CACHE_INDEXED_FIELDS (FIX 2)** — `base_form` is now stored as a dedicated text column on `word_cache` (same pattern as `part_of_speech`, `word_type`). SQL migration required: `ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS base_form text;`
+- **ai_insights cache write fixed (FIX 3)** — Previous approach created a new `mode='insights'` row which could fail on NOT NULL column constraints. Redesigned: `ai_insights` is now a dedicated JSONB column on the existing `mode='single'` cache row, written via `setCachedExtra` (UPDATE only — never creates a new row). `getCachedWord` now selects and returns all `CACHE_EXTRA_JSONB_FIELDS` (including `ai_insights`) alongside the standard response. `fetchInsights` checks `cacheRow?.ai_insights` before calling AI; after AI call, writes to both `word_cache` (shared, cross-user) and `vocabulary.ai_insights` (per-user) in parallel. Console logs added on both read hit and write paths for debugging. SQL migration required: `ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS ai_insights jsonb;`
+
+## 2026-04-19 (earlier)
+
+- **AI Insights cached to word_cache** — `fetchInsights` checks word_cache before calling AI; writes to both word_cache and vocabulary.ai_insights. (Superseded by FIX 3 above.)
+- **Explore mode: removed session exclusion list** — `seenWords` state removed from ExploreMode; selection is purely random from cache pool. Word selection strategy will be replaced with a seed table approach (`word_seeds`) in a future session.
 
 ## 2026-04-18
 

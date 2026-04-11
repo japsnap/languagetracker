@@ -90,7 +90,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     filtered.forEach(c => { initial[c] = { status: 'loading', data: null }; });
     setSecondaryResults(initial);
     filtered.forEach(c => {
-      lookupSecondary(originalWord, sourceLang, c, primaryLang, null)
+      lookupSecondary(originalWord, sourceLang, c, c, null)
         .then(data => setSecondaryResults(prev => ({ ...prev, [c]: { status: 'done', data } })))
         .catch(() => setSecondaryResults(prev => ({ ...prev, [c]: { status: 'error', data: null } })));
     });

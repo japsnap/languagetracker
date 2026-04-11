@@ -16,18 +16,36 @@
 import { supabase } from './supabase';
 
 /**
- * Dedicated columns stored alongside `response` for indexing/querying.
- *
- * To add a new indexed field:
- *   1. Run: ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS <field> text;
- *   2. Add the field name to this array — everything else is automatic.
- *
+ * Dedicated TEXT columns stored alongside `response` for indexing/querying.
  * Values are extracted from the AI response object (or first item of a multi-mode array).
  * On cache hit, column values backfill any fields missing from older `response` blobs.
+ *
+ * To add a new indexed text field:
+ *   1. Run: ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS <field> text;
+ *   2. Add the field name here — extractIndexedFields, getCachedWord, setCachedWord handle it.
+ *
+ * SQL migrations required for current fields:
+ *   ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS recommended_level text;
+ *   ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS base_form text;
  */
-// SQL migration required for new entries here:
-//   ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS recommended_level text;
-const CACHE_INDEXED_FIELDS = ['part_of_speech', 'word_type', 'recommended_level'];
+const CACHE_INDEXED_FIELDS = ['part_of_speech', 'word_type', 'recommended_level', 'base_form'];
+
+/**
+ * Dedicated JSONB columns stored alongside `response` for on-demand enrichment data.
+ * These are NOT extracted from the main word AI response — they are populated separately
+ * via setCachedExtra after their own fetch.
+ *
+ * getCachedWord selects and returns these automatically alongside `response`.
+ * setCachedExtra writes them to an existing cache row without touching `response`.
+ *
+ * To add a new extra JSONB field:
+ *   1. Run: ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS <field> jsonb;
+ *   2. Add the field name here — getCachedWord returns it, setCachedExtra writes it.
+ *
+ * SQL migration required for current fields:
+ *   ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS ai_insights jsonb;
+ */
+const CACHE_EXTRA_JSONB_FIELDS = ['ai_insights'];
 
 /** Extract CACHE_INDEXED_FIELDS from a response (object or multi-mode array). */
 function extractIndexedFields(response) {
@@ -41,7 +59,10 @@ function extractIndexedFields(response) {
 }
 
 /**
- * Look up a cached response.
+ * Look up a cached response. Returns the merged object (response + indexed cols +
+ * extra JSONB cols), or null on miss. Callers can check any extra field (e.g.
+ * result?.ai_insights) without a separate query.
+ *
  * @param {string} word            - normalized input word
  * @param {string} inputLang       - language the user typed in
  * @param {string} learningLang    - target word language
@@ -51,7 +72,7 @@ function extractIndexedFields(response) {
  */
 export async function getCachedWord(word, inputLang, learningLang, primaryLang, mode) {
   const normalized = word.toLowerCase().trim();
-  const selectCols = ['response', ...CACHE_INDEXED_FIELDS].join(', ');
+  const selectCols = ['response', ...CACHE_INDEXED_FIELDS, ...CACHE_EXTRA_JSONB_FIELDS].join(', ');
   const { data, error } = await supabase
     .from('word_cache')
     .select(selectCols)
@@ -68,15 +89,15 @@ export async function getCachedWord(word, inputLang, learningLang, primaryLang, 
   }
   if (!data) return null;
 
-  const { response, ...indexedCols } = data;
+  const { response, ...rest } = data; // rest = indexed text cols + extra JSONB cols
 
-  // Multi-mode returns an array — indexed column values belong to the first item.
-  // Array items contain their own fields from when they were cached; return as-is.
+  // Multi-mode returns an array — extra column values belong to the first item only;
+  // callers receive the raw array and do not use extra cols for multi-mode.
   if (Array.isArray(response)) return response;
 
-  // Single/secondary: merge column values as fallback for entries cached before a field
-  // was added to the prompt. Response fields take precedence over column values.
-  return { ...indexedCols, ...response };
+  // Single/secondary: merge so that (a) response fields take precedence over indexed
+  // fallbacks, and (b) extra JSONB fields (e.g. ai_insights) are available on the result.
+  return { ...rest, ...response };
 }
 
 /**
@@ -142,5 +163,38 @@ export async function setCachedWord(word, inputLang, learningLang, primaryLang, 
     );
   if (error) {
     console.error('[cache] setCachedWord failed:', error.message, { word: normalized, inputLang, learningLang, primaryLang, mode });
+  }
+}
+
+/**
+ * Write extra JSONB fields (CACHE_EXTRA_JSONB_FIELDS) to an existing cache row.
+ * Uses UPDATE — will not create a new row. If no matching row exists the update is
+ * a no-op; the caller should fall back to vocabulary-level storage.
+ *
+ * Extensibility: add new fields to CACHE_EXTRA_JSONB_FIELDS + run the SQL migration.
+ * No changes needed here or in the callers.
+ *
+ * @param {string} word
+ * @param {string} inputLang
+ * @param {string} learningLang
+ * @param {string} primaryLang
+ * @param {string} mode
+ * @param {object} extraFields  — e.g. { ai_insights: { ... } }
+ */
+export async function setCachedExtra(word, inputLang, learningLang, primaryLang, mode, extraFields) {
+  const normalized = word.toLowerCase().trim();
+  console.log('[cache] setCachedExtra write:', { word: normalized, inputLang, learningLang, primaryLang, mode, fields: Object.keys(extraFields) });
+  const { error } = await supabase
+    .from('word_cache')
+    .update(extraFields)
+    .eq('input_word', normalized)
+    .eq('input_language', inputLang)
+    .eq('learning_language', learningLang)
+    .eq('primary_language', primaryLang)
+    .eq('mode', mode);
+  if (error) {
+    console.error('[cache] setCachedExtra failed:', error.message, { word: normalized, mode, fields: Object.keys(extraFields) });
+  } else {
+    console.log('[cache] setCachedExtra OK:', { word: normalized, mode, fields: Object.keys(extraFields) });
   }
 }
