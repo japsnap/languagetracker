@@ -90,7 +90,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     filtered.forEach(c => { initial[c] = { status: 'loading', data: null }; });
     setSecondaryResults(initial);
     filtered.forEach(c => {
-      lookupSecondary(originalWord, sourceLang, c, c, null)
+      lookupSecondary(originalWord, sourceLang, c, primaryLang, null)
         .then(data => setSecondaryResults(prev => ({ ...prev, [c]: { status: 'done', data } })))
         .catch(() => setSecondaryResults(prev => ({ ...prev, [c]: { status: 'error', data: null } })));
     });
@@ -513,6 +513,10 @@ function SecondaryMiniCard({ lang, entry }) {
           <p className={styles.miniCardWord}>{data.word_in_target}</p>
           <RomanizationDisplay kana={data.kana_reading} romanization={data.romanization} />
           <p className={styles.miniCardMeaning}>{data.meaning_brief}</p>
+          {/* Native meaning — shown only when it differs from the primary-language meaning */}
+          {data.meaning_native && data.meaning_native !== data.meaning_brief && (
+            <p className={styles.miniCardMeaningNative}>{data.meaning_native}</p>
+          )}
           {!expanded && data.example_brief && (
             <p className={styles.miniCardExample}>{data.example_brief}</p>
           )}

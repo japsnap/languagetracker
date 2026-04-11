@@ -108,7 +108,7 @@ function buildSecondaryPrompt(sourceLang, targetLang, meaningLang) {
     ? ',\n' + romaFields.join(',\n')
     : '';
 
-  return `You are a multilingual language expert. Given a word in ${source}, respond with ONLY a valid JSON object — no markdown fences, no explanation. Translate the word into ${target} and provide the following fields. Meanings, part of speech labels, and notes must be in ${meaning}:
+  return `You are a multilingual language expert. Given a word in ${source}, respond with ONLY a valid JSON object — no markdown fences, no explanation. Translate the word into ${target} and provide the following fields. Part of speech labels and notes must be in ${meaning}:
 
 {
   "word_in_target": "the word translated into ${target}",
@@ -116,6 +116,7 @@ function buildSecondaryPrompt(sourceLang, targetLang, meaningLang) {
   "word_type": "word | phrase | idiom | expression | abbreviation",
   "base_form": "canonical/infinitive form in ${target}, or null if already base",
   "meaning_brief": "short meaning/definition in ${meaning} (1 sentence max)",
+  "meaning_native": "short meaning/definition in ${target} (1 sentence max — omit if ${target} equals ${meaning})",
   "example_brief": "one short example sentence in ${target} using this word",
   "related_words": "comma-separated related words in ${target}, or empty string",
   "other_useful_notes": "brief grammar or usage note in ${meaning}, or empty string"${extraFieldsStr}

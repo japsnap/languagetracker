@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-04-20
+
+- **Secondary cards show dual meanings (FIX 1)** — Each secondary card now shows two meanings in compact view: (1) `meaning_brief` in the user's primary language (e.g. English); (2) `meaning_native` in the card's own target language (e.g. Urdu meaning on Urdu card), separated by a dashed divider. `meaning_native` is only shown when it differs from `meaning_brief` — no duplicate for cases where both languages are the same. `buildSecondaryPrompt` in `api/anthropic.js` now returns both fields; `meaningLang` passed to `lookupSecondary` reverts to `primaryLang` (for `meaning_brief`), while `meaning_native` is always in the target language automatically.
+- **ai_insights cache write fixed (FIX 2)** — `setCachedExtra` now uses `.select()` after `.update()` to detect when 0 rows matched (row not in cache at this key), previously logging `OK` falsely. Priority order corrected: (1) word_cache checked first on every `fetchInsights` call; (2) if vocabulary has it, backfill word_cache and return — no AI call; (3) AI call writes to both stores. Vocabulary-only entries are now promoted to word_cache on next view, making subsequent lookups by any user free.
+
 ## 2026-04-19
 
 - **Secondary card meanings in own language (FIX 1)** — Secondary mini-cards now show meaning in the card's own target language (e.g. Urdu card shows meaning in Urdu, Portuguese card in Portuguese). Previously `meaningLang` was always set to the user's primary language. `fireSecondaryLookups` now passes `c` (the target language) as both `targetLanguage` and `meaningLanguage` to `lookupSecondary`. Cache key updates accordingly: old secondary entries become cache misses.

@@ -183,18 +183,27 @@ export async function setCachedWord(word, inputLang, learningLang, primaryLang, 
  */
 export async function setCachedExtra(word, inputLang, learningLang, primaryLang, mode, extraFields) {
   const normalized = word.toLowerCase().trim();
-  console.log('[cache] setCachedExtra write:', { word: normalized, inputLang, learningLang, primaryLang, mode, fields: Object.keys(extraFields) });
-  const { error } = await supabase
+  const ctx = { word: normalized, inputLang, learningLang, primaryLang, mode, fields: Object.keys(extraFields) };
+  console.log('[cache] setCachedExtra write:', ctx);
+
+  // .select() makes Supabase return the updated rows — empty array means no row matched.
+  const { data: updated, error } = await supabase
     .from('word_cache')
     .update(extraFields)
     .eq('input_word', normalized)
     .eq('input_language', inputLang)
     .eq('learning_language', learningLang)
     .eq('primary_language', primaryLang)
-    .eq('mode', mode);
+    .eq('mode', mode)
+    .select('input_word');
+
   if (error) {
-    console.error('[cache] setCachedExtra failed:', error.message, { word: normalized, mode, fields: Object.keys(extraFields) });
+    console.error('[cache] setCachedExtra failed:', error.message, ctx);
+  } else if (!updated || updated.length === 0) {
+    // Row does not exist for this key — UPDATE is a no-op. Caller's vocabulary write
+    // (e.g. vocabulary.ai_insights) still succeeds as the per-user fallback.
+    console.log('[cache] setCachedExtra: no cache row at key — skipping', ctx);
   } else {
-    console.log('[cache] setCachedExtra OK:', { word: normalized, mode, fields: Object.keys(extraFields) });
+    console.log('[cache] setCachedExtra OK:', { ...ctx, updatedRows: updated.length });
   }
 }
