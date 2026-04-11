@@ -90,9 +90,10 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
 }${suffix}`;
 }
 
-function buildSecondaryPrompt(sourceLang, targetLang) {
-  const source = LANGUAGE_NAMES[sourceLang];
-  const target = LANGUAGE_NAMES[targetLang];
+function buildSecondaryPrompt(sourceLang, targetLang, meaningLang) {
+  const source  = LANGUAGE_NAMES[sourceLang];
+  const target  = LANGUAGE_NAMES[targetLang];
+  const meaning = LANGUAGE_NAMES[meaningLang] || LANGUAGE_NAMES['en'];
 
   const romaFields = NON_LATIN.has(targetLang) ? [
     `  "romanization": "English-readable pronunciation (${
@@ -107,12 +108,17 @@ function buildSecondaryPrompt(sourceLang, targetLang) {
     ? ',\n' + romaFields.join(',\n')
     : '';
 
-  return `You are a multilingual language expert. Given a word in ${source}, respond with ONLY a valid JSON object — no markdown fences, no explanation. Provide a brief translation in ${target}. Use exactly these fields:
+  return `You are a multilingual language expert. Given a word in ${source}, respond with ONLY a valid JSON object — no markdown fences, no explanation. Translate the word into ${target} and provide the following fields. Meanings, part of speech labels, and notes must be in ${meaning}:
 
 {
   "word_in_target": "the word translated into ${target}",
-  "meaning_brief": "a short meaning/definition in ${target} (1 sentence max)",
-  "example_brief": "one short example sentence in ${target} using this word"${extraFieldsStr}
+  "part_of_speech": "noun | verb | adjective | adverb | phrase | other (in ${meaning})",
+  "word_type": "word | phrase | idiom | expression | abbreviation",
+  "base_form": "canonical/infinitive form in ${target}, or null if already base",
+  "meaning_brief": "short meaning/definition in ${meaning} (1 sentence max)",
+  "example_brief": "one short example sentence in ${target} using this word",
+  "related_words": "comma-separated related words in ${target}, or empty string",
+  "other_useful_notes": "brief grammar or usage note in ${meaning}, or empty string"${extraFieldsStr}
 }`;
 }
 
@@ -173,7 +179,7 @@ Return exactly 3 collocations.`;
 //   2. Add its key to INSIGHTS_SECTIONS in InsightsPanel.jsx.
 //   The fetch and DB-save logic in insights.js requires no changes.
 
-const MAX_TOKENS = { single: 700, multi: 2000, secondary: 300, explore: 700, insights: 600 };
+const MAX_TOKENS = { single: 700, multi: 2000, secondary: 500, explore: 700, insights: 600 };
 
 const VALID_LEVELS    = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
 const VALID_WORD_TYPES = new Set(['word', 'phrase', 'idiom']);
@@ -223,7 +229,7 @@ export default async function handler(req, res) {
 
   // Validate client payload
   const {
-    word, input_language, learning_language, primary_language,
+    word, input_language, learning_language, primary_language, meaning_language,
     mode, level, word_type, part_of_speech,
   } = req.body ?? {};
 
@@ -267,9 +273,10 @@ export default async function handler(req, res) {
     ) {
       return res.status(400).json({ error: 'Invalid request payload' });
     }
-    // For secondary mode, learning_language = source, primary_language = target
+    // For secondary mode: learning_language = source lang, primary_language = target lang,
+    // meaning_language = user's primary language for meaning/notes (defaults to 'en')
     systemPrompt = mode === 'secondary'
-      ? buildSecondaryPrompt(learning_language, primary_language)
+      ? buildSecondaryPrompt(learning_language, primary_language, meaning_language || 'en')
       : buildPrimaryPrompt(input_language, learning_language, primary_language, mode);
     userMessage = word.trim();
   }

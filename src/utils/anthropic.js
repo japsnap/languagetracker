@@ -112,23 +112,27 @@ export async function lookupWordSingle(word, inputLanguage, learningLanguage, pr
 }
 
 /**
- * Brief secondary translation: returns { word_in_target, meaning_brief, example_brief }.
- * Independent of the three-role system — takes explicit source and target codes.
- * For secondary mini-cards: source = learning language, target = secondary language code.
+ * Secondary translation for mini-cards.
+ * Translates `word` (in `sourceLanguage`) into `targetLanguage`.
+ * Meaning/notes are returned in `meaningLanguage` (the user's primary language).
+ *
+ * Returns { word_in_target, part_of_speech, word_type, base_form,
+ *           meaning_brief, example_brief, related_words, other_useful_notes,
+ *           romanization?, kana_reading? }
  */
-export async function lookupSecondary(word, sourceLanguage, targetLanguage, signal) {
+export async function lookupSecondary(word, sourceLanguage, targetLanguage, meaningLanguage, signal) {
   const normalized = word.toLowerCase().trim();
-  // Cache key: input_language unused for secondary; use sourceLanguage for both input and learning slots
-  const cached = await getCachedWord(normalized, sourceLanguage, sourceLanguage, targetLanguage, 'secondary');
+  // Cache key: (word, sourceLanguage, meaningLanguage, targetLanguage, 'secondary')
+  const cached = await getCachedWord(normalized, sourceLanguage, meaningLanguage, targetLanguage, 'secondary');
   if (cached !== null) {
     logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'secondary', cache_hit: true });
     return cached;
   }
   logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'secondary', cache_hit: false });
 
-  // Server: secondary mode uses learning_language as source, primary_language as target
+  // Server: learning_language=source, primary_language=target, meaning_language=user's primary
   const text = await callAPI(
-    { word: normalized, learning_language: sourceLanguage, primary_language: targetLanguage, mode: 'secondary' },
+    { word: normalized, learning_language: sourceLanguage, primary_language: targetLanguage, meaning_language: meaningLanguage, mode: 'secondary' },
     signal,
   );
   let result;
@@ -139,6 +143,6 @@ export async function lookupSecondary(word, sourceLanguage, targetLanguage, sign
     if (match) { result = JSON.parse(match[0]); }
     else throw new Error('Could not parse secondary lookup response.');
   }
-  await setCachedWord(normalized, sourceLanguage, sourceLanguage, targetLanguage, 'secondary', result);
+  await setCachedWord(normalized, sourceLanguage, meaningLanguage, targetLanguage, 'secondary', result);
   return result;
 }

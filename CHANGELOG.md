@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-04-19
+
+- **AI Insights cached to word_cache (FIX 1)** — `fetchInsights` in `insights.js` now checks `word_cache` (mode=`'insights'`) before calling the AI. On API call, insights are written to both `word_cache` (shared, cross-user) and `vocabulary.ai_insights` (per-user fast path) in parallel. Cache key: `(word, learningLang, learningLang, primaryLang, 'insights')`. Any future user viewing the same word in the same language pair skips the AI call entirely. No SQL migration required — `'insights'` is a new value in the existing `mode` text column; insights JSONB is stored in the existing `response` column. Future enrichment types (e.g. false_friends) follow the same pattern with a new mode string.
+- **Explore mode: removed session exclusion list (FIX 2)** — `seenWords` state, setter, and passing removed from `ExploreMode.jsx`. `fetchExploreWord` no longer accepts a `seenWords` param. `getRandomCachedExploreWord` no longer filters seen words — selection is purely random from the full cache pool. Word selection strategy will be replaced with a seed table approach (`word_seeds`) in a future session.
+
+## 2026-04-18
+
+- **Secondary language source fix (FIX 1)** — Secondary mini-cards were translating the learning-language output word (e.g. "precioso") instead of the original typed word. `fireSecondaryLookups` now receives the original input term and `actualInputLang`; passes these to `lookupSecondary` as the source word and source language. Result: typing "gorgeous" in English now correctly returns the Urdu/other-language translation of "gorgeous", not of the Spanish result.
+- **Secondary cache unification (FIX 2)** — `buildSecondaryPrompt` in `api/anthropic.js` now returns the full field set: `word_in_target`, `part_of_speech`, `word_type`, `base_form`, `meaning_brief`, `example_brief`, `related_words`, `other_useful_notes` (+ romanization for non-Latin scripts). Meaning/pos/notes language is now explicit via `meaning_language` param (user's primary language). `lookupSecondary` sends `meaning_language` to the server and uses it in the cache key `(word, sourceLang, meaningLang, targetLang, 'secondary')`. `MAX_TOKENS.secondary` bumped 300→500.
+- **Secondary card Show more (FIX 3)** — Each secondary mini-card now has a "Show more ▼" / "Show less ▲" toggle button. Expanded view shows `part_of_speech`, `example_brief`, `related_words`, `other_useful_notes` from the already-fetched data — no extra API call. Fields are driven by a `SECONDARY_EXTRA_FIELDS` config array so adding new fields to the expanded view requires only one new entry there. Compact view is unchanged.
+
 ## 2026-04-17
 
 - **More Info panel on word detail** — "More info ▼" button added to the expanded word row in Review. On first tap: checks `word.ai_insights` (populated from a prior session via DB); if null, calls AI and saves the result to `vocabulary.ai_insights` (JSONB). No API call on subsequent opens — the word prop is kept fresh by `useVocabulary`'s optimistic update. Panel renders etymology, register (colored badge), 3 common collocations with examples, and a cultural note.

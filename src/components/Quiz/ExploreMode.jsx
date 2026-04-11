@@ -28,7 +28,6 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
   const [flipped,     setFlipped]     = useState(false);
   const [phase,       setPhase]       = useState('idle'); // idle | loading | ready | error
   const [errorMsg,    setErrorMsg]    = useState('');
-  const [seenWords,   setSeenWords]   = useState(new Set()); // reset on level/lang change
   const [savedWords,  setSavedWords]  = useState(new Set()); // saved this session
   const [saving,      setSaving]      = useState(false);
   const abortRef = useRef(null);
@@ -37,7 +36,7 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
   const primaryLang     = preferences?.primary_language  || 'en';
   const learningLangObj = SUPPORTED_LANGUAGES.find(l => l.code === learningLang);
 
-  async function loadNext(currentLevel = level, currentSeen = seenWords) {
+  async function loadNext(currentLevel = level) {
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -53,11 +52,9 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
         primaryLang,
         level: currentLevel,
         wordType: 'word',
-        seenWords: currentSeen,
         signal: controller.signal,
       });
       setCard(result);
-      setSeenWords(prev => new Set([...prev, (result.word || '').toLowerCase().trim()]));
       setPhase('ready');
     } catch (err) {
       if (err.name === 'AbortError') return;
@@ -66,18 +63,15 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
     }
   }
 
-  // Reset seen words and load on level/language change
+  // Load on level/language change
   useEffect(() => {
-    const freshSeen = new Set();
-    setSeenWords(freshSeen);
-    loadNext(level, freshSeen);
+    loadNext(level);
     return () => abortRef.current?.abort();
   }, [level, learningLang, primaryLang]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function handleLevelChange(lvl) {
     if (lvl === level) return;
     setLevel(lvl);
-    // useEffect above fires when level changes
   }
 
   async function handleSave() {

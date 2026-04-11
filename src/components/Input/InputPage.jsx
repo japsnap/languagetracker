@@ -78,10 +78,10 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   }
 
   // ── Secondary lookups ─────────────────────────────────────────────────────────
-  // Always fire with the result word (in learning language) as input,
-  // using learningLang as source, for each secondary language.
+  // Always fire with the ORIGINAL input word (not the learning-language output),
+  // using the original input language as source, for each secondary language.
 
-  function fireSecondaryLookups(wordInLearningLang, langs) {
+  function fireSecondaryLookups(originalWord, sourceLang, langs) {
     if (!langs || langs.length === 0) return;
     // Skip learning and primary — they're already shown in the main result
     const filtered = langs.filter(c => c !== learningLang && c !== primaryLang);
@@ -90,7 +90,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     filtered.forEach(c => { initial[c] = { status: 'loading', data: null }; });
     setSecondaryResults(initial);
     filtered.forEach(c => {
-      lookupSecondary(wordInLearningLang, learningLang, c, null)
+      lookupSecondary(originalWord, sourceLang, c, primaryLang, null)
         .then(data => setSecondaryResults(prev => ({ ...prev, [c]: { status: 'done', data } })))
         .catch(() => setSecondaryResults(prev => ({ ...prev, [c]: { status: 'error', data: null } })));
     });
@@ -135,7 +135,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
         kana_reading: result.kana_reading || '',
       });
       setPhase('preview');
-      fireSecondaryLookups(resultWord.toLowerCase().trim(), secondaryLangs);
+      fireSecondaryLookups(term.toLowerCase().trim(), actualInputLang, secondaryLangs);
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
@@ -482,7 +482,20 @@ function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguag
   );
 }
 
+// Fields shown in expanded view — add new entries here to extend without rewriting card logic
+const SECONDARY_EXTRA_FIELDS = [
+  { key: 'part_of_speech',      label: 'Part of speech' },
+  { key: 'example_brief',       label: 'Example' },
+  { key: 'related_words',       label: 'Related words' },
+  { key: 'other_useful_notes',  label: 'Notes' },
+];
+
 function SecondaryMiniCard({ lang, entry }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const data = entry?.data;
+  const hasExtra = data && SECONDARY_EXTRA_FIELDS.some(f => data[f.key]);
+
   return (
     <div className={styles.miniCard} translate="no">
       <div className={styles.miniCardHeader}>
@@ -495,13 +508,33 @@ function SecondaryMiniCard({ lang, entry }) {
         </div>
       ) : entry.status === 'error' ? (
         <p className={styles.miniCardError}>Could not load</p>
-      ) : entry.data ? (
+      ) : data ? (
         <div className={styles.miniCardBody}>
-          <p className={styles.miniCardWord}>{entry.data.word_in_target}</p>
-          <RomanizationDisplay kana={entry.data.kana_reading} romanization={entry.data.romanization} />
-          <p className={styles.miniCardMeaning}>{entry.data.meaning_brief}</p>
-          {entry.data.example_brief && (
-            <p className={styles.miniCardExample}>{entry.data.example_brief}</p>
+          <p className={styles.miniCardWord}>{data.word_in_target}</p>
+          <RomanizationDisplay kana={data.kana_reading} romanization={data.romanization} />
+          <p className={styles.miniCardMeaning}>{data.meaning_brief}</p>
+          {!expanded && data.example_brief && (
+            <p className={styles.miniCardExample}>{data.example_brief}</p>
+          )}
+          {expanded && (
+            <div className={styles.miniCardExtra}>
+              {SECONDARY_EXTRA_FIELDS.map(({ key, label }) =>
+                data[key] ? (
+                  <div key={key} className={styles.miniCardExtraField}>
+                    <span className={styles.miniCardExtraLabel}>{label}</span>
+                    <span className={styles.miniCardExtraValue}>{data[key]}</span>
+                  </div>
+                ) : null
+              )}
+            </div>
+          )}
+          {hasExtra && (
+            <button
+              className={styles.miniCardMoreBtn}
+              onClick={() => setExpanded(e => !e)}
+            >
+              {expanded ? 'Show less ▲' : 'Show more ▼'}
+            </button>
           )}
         </div>
       ) : null}

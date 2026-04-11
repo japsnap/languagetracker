@@ -2,10 +2,10 @@
  * Explore mode word serving.
  *
  * Serving order:
- *   1. Random entry from word_cache matching (learningLang, primaryLang, level, wordType)
- *      excluding words already seen this session — zero AI cost.
- *   2. Fresh AI call (explore mode prompt) if no unseen cache hit.
- *      Response is immediately saved to word_cache so future sessions reuse it.
+ *   1. Random entry from word_cache matching (learningLang, primaryLang, level, wordType) —
+ *      zero AI cost. Selection is purely random with no session exclusion list.
+ *   2. Fresh AI call (explore mode prompt) if cache is empty for these params.
+ *      Response is immediately saved to word_cache so future calls can reuse it.
  *
  * Extensibility: to support phrase/idiom filtering or community word pools, add params
  * to `fetchExploreWord` and forward them to `getRandomCachedExploreWord`. The
@@ -35,7 +35,6 @@ async function buildHeaders() {
  * @param {string}      opts.primaryLang
  * @param {string}      opts.level       — 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'
  * @param {string}      [opts.wordType]  — 'word' | 'phrase' | 'idiom'; default 'word'
- * @param {Set<string>} [opts.seenWords] — lowercase word strings shown this session
  * @param {AbortSignal} [opts.signal]
  * @returns {Promise<object>} AI result object (same shape as primary lookup)
  */
@@ -44,12 +43,11 @@ export async function fetchExploreWord({
   primaryLang,
   level,
   wordType = 'word',
-  seenWords = new Set(),
   signal,
 }) {
-  // 1. Try cache first (free)
+  // 1. Try cache first (free) — purely random, no exclusion list
   const cached = await getRandomCachedExploreWord(
-    learningLang, primaryLang, level, wordType, seenWords
+    learningLang, primaryLang, level, wordType
   );
   if (cached) {
     logEvent('word_lookup', {

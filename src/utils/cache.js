@@ -80,23 +80,22 @@ export async function getCachedWord(word, inputLang, learningLang, primaryLang, 
 }
 
 /**
- * Return one random cached word matching explore filters, excluding already-seen words.
+ * Return one random cached word matching explore filters.
  * Fetches up to `limit` candidates client-side and picks randomly (Supabase has no
  * native ORDER BY RANDOM()).
  *
  * Extensibility: add filter params (e.g. communityPool, topic) here and in the query
  * without touching the caller (fetchExploreWord).
  *
- * @param {string}      learningLang
- * @param {string}      primaryLang
- * @param {string}      level        — 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'
- * @param {string}      [wordType]   — 'word' | 'phrase' | 'idiom'; default 'word'
- * @param {Set<string>} [seenWords]  — lowercase word strings already shown this session
- * @param {number}      [limit]      — max rows to fetch before random selection
+ * @param {string} learningLang
+ * @param {string} primaryLang
+ * @param {string} level        — 'A1' | 'A2' | 'B1' | 'B2' | 'C1' | 'C2'
+ * @param {string} [wordType]   — 'word' | 'phrase' | 'idiom'; default 'word'
+ * @param {number} [limit]      — max rows to fetch before random selection
  */
 export async function getRandomCachedExploreWord(
   learningLang, primaryLang, level,
-  wordType = 'word', seenWords = new Set(), limit = 30
+  wordType = 'word', limit = 30
 ) {
   const { data, error } = await supabase
     .from('word_cache')
@@ -114,13 +113,7 @@ export async function getRandomCachedExploreWord(
   }
   if (!data || data.length === 0) return null;
 
-  const candidates = data.filter(row => {
-    const w = (row.response?.word || '').toLowerCase().trim();
-    return w && !seenWords.has(w);
-  });
-  if (candidates.length === 0) return null;
-
-  const pick = candidates[Math.floor(Math.random() * candidates.length)];
+  const pick = data[Math.floor(Math.random() * data.length)];
   const { response, ...indexedCols } = pick;
   // Merge column values as fallback (response fields take precedence)
   return { ...indexedCols, ...response };

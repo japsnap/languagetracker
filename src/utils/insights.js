@@ -1,17 +1,27 @@
 /**
  * On-demand word insights — etymology, register, collocations, cultural note.
  *
- * Fetch order:
- *   1. Return word.ai_insights immediately if already populated (DB hit from prior fetch).
- *   2. Call AI (mode='insights'), parse response, save to vocabulary.ai_insights, return.
+ * Fetch order (cache-first, two-write):
+ *   1. Return word.ai_insights immediately if already populated (optimistic update from
+ *      useVocabulary ensures this is non-null after the first fetch in any session).
+ *   2. Check word_cache for mode='insights' — populated by any prior user. Return if found.
+ *   3. Call AI, parse response, write to BOTH word_cache (shared, cross-user) AND
+ *      vocabulary.ai_insights (per-user fast path). Return result.
  *
- * Extensibility: ai_insights is stored as opaque JSONB. Adding new fields (false_friends,
- * mnemonic, etc.) only requires updating buildInsightsPrompt in api/anthropic.js and
- * INSIGHTS_SECTIONS in InsightsPanel.jsx. This file requires no changes.
+ * Extensibility: ai_insights is stored as opaque JSONB in both stores. Adding new fields
+ * (false_friends, mnemonic, etc.) only requires updating buildInsightsPrompt in
+ * api/anthropic.js and INSIGHTS_SECTIONS in InsightsPanel.jsx — this file is unchanged.
+ *
+ * Future enrichment types (e.g. false_friends): follow the same pattern — use a new
+ * mode string (e.g. 'false_friends') with getCachedWord/setCachedWord. No changes here.
+ *
+ * Cache key for insights: (word, learningLang, learningLang, primaryLang, 'insights').
+ * No SQL migration required — 'insights' is a new mode value in the existing text column.
  */
 
 import { supabase } from './supabase';
 import { updateWordDB } from './vocabulary';
+import { getCachedWord, setCachedWord } from './cache';
 
 async function buildHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -31,13 +41,20 @@ async function buildHeaders() {
  * @returns {Promise<object>}   — the ai_insights object (from cache or fresh AI call)
  */
 export async function fetchInsights(word, primaryLang, signal) {
-  // 1. Already fetched — return immediately (optimistic update from useVocabulary ensures
-  //    word.ai_insights is populated after the first successful fetch in a session).
+  // 1. Already in memory — the optimistic update from useVocabulary means word.ai_insights
+  //    is populated after the first successful fetch in a session, so this path is always
+  //    taken on subsequent row expansions without touching the network.
   if (word.ai_insights) return word.ai_insights;
 
   const learningLang = word.word_language || 'es';
+  const wordLower    = word.word.toLowerCase().trim();
 
-  // 2. Call AI
+  // 2. Check shared cache — any user who previously fetched insights for this word
+  //    will have populated this row, making it available to all subsequent users for free.
+  const cached = await getCachedWord(wordLower, learningLang, learningLang, primaryLang, 'insights');
+  if (cached !== null) return cached;
+
+  // 3. Call AI
   const response = await fetch('/api/anthropic', {
     method: 'POST',
     signal,
@@ -72,9 +89,15 @@ export async function fetchInsights(word, primaryLang, signal) {
     else throw new Error('Could not parse insights response. Try again.');
   }
 
-  // 3. Persist to vocabulary — updateWordDB also fires the optimistic UI update via
-  //    onUpdateWord in the caller, so subsequent row expansions skip the API call.
-  await updateWordDB(word.id, { ai_insights: insights });
+  // 4. Write to both stores in parallel:
+  //    - word_cache: shared across all users, keyed by (word, langs, 'insights').
+  //      Any future user hitting this word skips the AI call entirely (step 2 above).
+  //    - vocabulary: per-user fast path. Optimistic update by the caller ensures step 1
+  //      is hit on all subsequent opens of this row in the same session.
+  await Promise.all([
+    setCachedWord(wordLower, learningLang, learningLang, primaryLang, 'insights', insights),
+    updateWordDB(word.id, { ai_insights: insights }),
+  ]);
 
   return insights;
 }
