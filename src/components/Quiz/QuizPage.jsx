@@ -211,10 +211,13 @@ export default function QuizPage({ words, onUpdateWord, preferences }) {
     [current, onUpdateWord, quizMode]
   );
 
-  // Reverse mode: compare typed input to correct word, then dispatch as correct/wrong.
+  // Hard mode: compare typed input against the word and any stored alternatives.
   function handleCheckAnswer(typed) {
     if (!typed.trim() || !current) return;
-    handleAnswer(answersMatch(typed, current.word) ? 'correct' : 'wrong');
+    const isCorrect = answersMatch(typed, current.word) ||
+      (Array.isArray(current.word_alternatives) &&
+        current.word_alternatives.some(alt => answersMatch(typed, alt)));
+    handleAnswer(isCorrect ? 'correct' : 'wrong');
   }
 
   // Change answer: undo first response, apply new one.

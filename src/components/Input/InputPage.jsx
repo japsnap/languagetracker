@@ -16,6 +16,8 @@ const EMPTY_FIELDS = {
   other_useful_notes: '',
   romanization: '',
   kana_reading: '',
+  meanings_array: null,
+  word_alternatives: null,
 };
 
 export default function InputPage({ words, onAddWord, onRemoveWord, preferences, onUpdatePreferences, onNavigate }) {
@@ -133,6 +135,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
         other_useful_notes: result.other_useful_notes || '',
         romanization:       result.romanization       || '',
         kana_reading:       result.kana_reading       || '',
+        meanings_array:     Array.isArray(result.meanings_array)    ? result.meanings_array    : null,
+        word_alternatives:  Array.isArray(result.word_alternatives) ? result.word_alternatives : null,
       });
       setPhase('preview');
       fireSecondaryLookups(resultWord.toLowerCase().trim(), secondaryLangs);
@@ -201,6 +205,11 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       if (existing) { setDuplicate(existing); return; }
     }
 
+    // Fall back to splitting the meaning field for old cached responses that lack meanings_array
+    const meaningsArray = (Array.isArray(fields.meanings_array) && fields.meanings_array.length > 0)
+      ? fields.meanings_array
+      : (fields.meaning ? fields.meaning.split(',').map(s => s.trim()).filter(Boolean) : null);
+
     const wordData = {
       word:               fields.word.trim(),
       part_of_speech:     fields.part_of_speech,
@@ -211,6 +220,9 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       other_useful_notes: fields.other_useful_notes,
       romanization:       fields.romanization       || null,
       kana_reading:       fields.kana_reading       || null,
+      meanings_array:     meaningsArray,
+      word_alternatives:  (Array.isArray(fields.word_alternatives) && fields.word_alternatives.length > 0)
+                            ? fields.word_alternatives : null,
       word_language:      learningLang,
       date_added:         localToday(),
       last_reviewed:      null,
@@ -240,6 +252,11 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     const c = candidates[index];
     if (!c) return;
 
+    // Fall back to splitting the meaning field for old cached responses that lack meanings_array
+    const cMeaningsArray = (Array.isArray(c.meanings_array) && c.meanings_array.length > 0)
+      ? c.meanings_array
+      : (c.meaning ? c.meaning.split(',').map(s => s.trim()).filter(Boolean) : null);
+
     const wordData = {
       word:               (c.word || '').trim(),
       part_of_speech:     c.part_of_speech     || '',
@@ -250,6 +267,9 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       other_useful_notes: c.other_useful_notes || '',
       romanization:       c.romanization       || null,
       kana_reading:       c.kana_reading       || null,
+      meanings_array:     cMeaningsArray,
+      word_alternatives:  (Array.isArray(c.word_alternatives) && c.word_alternatives.length > 0)
+                            ? c.word_alternatives : null,
       word_language:      learningLang,
       date_added:         localToday(),
       last_reviewed:      null,

@@ -77,8 +77,10 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
 
 {
   "word": "the word translated into ${learning} (corrected spelling if needed)",
+  "word_alternatives": ["up to 3 synonyms in ${learning} that are also valid translations for the same concept — do not repeat the main word; use empty array if none exist"],
   "part_of_speech": "in ${primary}: noun / verb / adjective / phrase / etc.",
   "meaning": "clear meaning in ${primary}. If there are multiple meanings, separate them with commas (e.g., 'weak, feeble, frail'). Do not use slashes or semicolons.",
+  "meanings_array": ["up to 4 distinct meanings or translations in ${primary}, first is most common — include synonyms a learner might reasonably answer"],
   "example": "a natural sentence in ${learning} using the word",
   "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
   "related_words": "comma-separated related words in ${learning}, or empty string",
@@ -112,7 +114,7 @@ function buildSecondaryPrompt(sourceLang, targetLang) {
 }`;
 }
 
-const MAX_TOKENS = { single: 400, multi: 1400, secondary: 300 };
+const MAX_TOKENS = { single: 600, multi: 1800, secondary: 300 };
 
 // ---------------------------------------------------------------------------
 // Helpers
