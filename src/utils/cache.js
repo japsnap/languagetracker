@@ -231,8 +231,11 @@ export async function setCachedWord(word, inputLang, learningLang, primaryLang, 
  * Extensibility: add new fields to CACHE_EXTRA_JSONB_FIELDS + run the SQL migration.
  * No changes needed here or in the callers.
  *
- * @param {string} word
- * @param {string} inputLang
+ * WHERE key: (result_word, learning_language, primary_language, mode) — matches findCachedWordRow.
+ * inputLang is accepted for call-site compatibility but is NOT used in the WHERE clause.
+ *
+ * @param {string} word         — the AI-corrected result word (matched against result_word column)
+ * @param {string} inputLang    — unused in WHERE; kept for call-site compatibility
  * @param {string} learningLang
  * @param {string} primaryLang
  * @param {string} mode
@@ -240,26 +243,28 @@ export async function setCachedWord(word, inputLang, learningLang, primaryLang, 
  */
 export async function setCachedExtra(word, inputLang, learningLang, primaryLang, mode, extraFields) {
   const normalized = word.toLowerCase().trim();
-  const ctx = { word: normalized, inputLang, learningLang, primaryLang, mode, fields: Object.keys(extraFields) };
+  const ctx = { word: normalized, learningLang, primaryLang, mode, fields: Object.keys(extraFields) };
   console.log('[cache] setCachedExtra write:', ctx);
 
+  // WHERE matches on result_word (the AI-corrected output word stored as a dedicated column),
+  // same key fields as findCachedWordRow. inputLang is NOT in the WHERE — it varies per lookup
+  // and is not known reliably at write time.
   // .select() makes Supabase return the updated rows — empty array means no row matched.
   const { data: updated, error } = await supabase
     .from('word_cache')
     .update(extraFields)
-    .eq('input_word', normalized)
-    .eq('input_language', inputLang)
+    .eq('result_word', normalized)
     .eq('learning_language', learningLang)
     .eq('primary_language', primaryLang)
     .eq('mode', mode)
-    .select('input_word');
+    .select('result_word');
 
   if (error) {
     console.error('[cache] setCachedExtra failed:', error.message, ctx);
   } else if (!updated || updated.length === 0) {
-    // Row does not exist for this key — UPDATE is a no-op. Caller's vocabulary write
+    // No row matched result_word at this key — UPDATE is a no-op. Caller's vocabulary write
     // (e.g. vocabulary.ai_insights) still succeeds as the per-user fallback.
-    console.log('[cache] setCachedExtra: no cache row at key — skipping', ctx);
+    console.log('[cache] setCachedExtra: no cache row at result_word key — skipping', ctx);
   } else {
     console.log('[cache] setCachedExtra OK:', { ...ctx, updatedRows: updated.length });
   }
