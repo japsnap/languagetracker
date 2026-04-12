@@ -67,7 +67,7 @@ export async function fetchInsights(word, primaryLang, signal) {
     console.log('[insights] step 2 hit — vocabulary, backfilling word_cache:', { word: wordLower, learningLang, primaryLang, cacheRowFound: !!cacheMatch });
     if (cacheMatch) {
       // Use the stored input_word and input_language — both may differ from the vocabulary word.
-      setCachedExtra(cacheMatch.inputWord, cacheMatch.inputLang, learningLang, primaryLang, 'single', { ai_insights: word.ai_insights });
+      setCachedExtra(wordLower, cacheMatch.inputLang, learningLang, primaryLang, 'single', { ai_insights: word.ai_insights });
     }
     return word.ai_insights;
   }
