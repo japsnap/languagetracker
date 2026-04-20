@@ -495,6 +495,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
             onGoBack={handleGoBack}
             onNext={startOrNext}
             learningLang={preferences?.learning_language || 'es'}
+            primaryLang={preferences?.primary_language || 'en'}
           />
         )}
 
@@ -533,7 +534,7 @@ function IdleScreen({ pool, onStart }) {
 
 const ALL_ANSWER_TYPES = ['correct', 'wrong', 'not-sure'];
 
-function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext, learningLang }) {
+function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext, learningLang, primaryLang }) {
   const inputRef = useRef(null);
 
   // Auto-focus the text input whenever a reverse-mode question appears
@@ -582,9 +583,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         {!isHard && (
           <div className={styles.cardWordWrap}>
             <div className={styles.cardWord} translate="no">{word.word}</div>
-            {phase === 'revealed' && (
-              <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
-            )}
+            <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
             {phase === 'revealed' && (word.kana_reading || word.romanization) && (
               <div className={styles.cardRomanization}>
                 {word.kana_reading && <span className={styles.cardKana}>{word.kana_reading}</span>}
@@ -598,6 +597,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         {isHard && phase === 'question' && (
           <div className={styles.reverseMeaningWrap}>
             <div className={styles.reverseMeaning}>{word.meaning}</div>
+            <SpeakerButton word={word.meaning} lang={primaryLang} />
           </div>
         )}
 
