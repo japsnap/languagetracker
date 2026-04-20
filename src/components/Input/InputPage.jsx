@@ -35,7 +35,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   const [savedIndices, setSavedIndices]         = useState(new Set());
   const [errorMsg, setErrorMsg]                 = useState('');
   const [duplicate, setDuplicate]               = useState(null);
-  const [showExisting, setShowExisting]         = useState(false);
   const [sessionAdded, setSessionAdded]         = useState([]);
   const [savedFlash, setSavedFlash]             = useState('');
   const [secondaryResults, setSecondaryResults] = useState({}); // { [langCode]: { status, data } }
@@ -76,7 +75,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     setFields(EMPTY_FIELDS);
     setInputWord('');
     setDuplicate(null);
-    setShowExisting(false);
     setCandidates([]);
     setSavedIndices(new Set());
     setSecondaryResults({});
@@ -99,9 +97,14 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       const saved = await onAddWord(wordData);
       setSessionAdded(prev => [saved, ...prev].slice(0, 5));
       setAutoSaveState({ id: saved.id, word: saved.word });
-      autoSaveTimer.current = setTimeout(() => setAutoSaveState(null), 5000);
+      // After 5s Undo window: auto-close preview and show the saved flash
+      autoSaveTimer.current = setTimeout(() => {
+        setSavedFlash(`"${saved.word}" saved!`);
+        setTimeout(() => setSavedFlash(''), 2500);
+        resetLookupState();
+      }, 5000);
     } catch (err) {
-      // Auto-save silently failed — user can still manually save from the preview card
+      // Auto-save silently failed — user sees the preview but no Undo bar appears
       console.warn('[auto-save] failed:', err?.message);
     }
   }
@@ -111,7 +114,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     onRemoveWord(autoSaveState.id);
     setSessionAdded(prev => prev.filter(w => w.id !== autoSaveState.id));
     clearTimeout(autoSaveTimer.current);
-    setAutoSaveState(null);
+    resetLookupState(); // close preview immediately, no flash
   }
 
   // Cleanup timer on unmount
@@ -158,7 +161,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     setPhase('loading');
     setErrorMsg('');
     setDuplicate(null);
-    setShowExisting(false);
     setSavedIndices(new Set());
     setCandidates([]);
     setSecondaryResults({});
@@ -237,50 +239,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     if (e.key === 'Enter') handleLookup();
   }
 
-  function handleFillManually() {
-    setPhase('preview');
-    setErrorMsg('');
-  }
-
   function handleDiscard() {
     resetLookupState();
-  }
-
-  // ── Save preview word ─────────────────────────────────────────────────────────
-
-  async function handleSave(force = false) {
-    if (!fields.word.trim()) return;
-
-    if (!force) {
-      const existing = words.find(
-        w => w.word.toLowerCase().trim() === fields.word.toLowerCase().trim()
-      );
-      if (existing) { setDuplicate(existing); return; }
-    }
-
-    const wordData = {
-      ...aiResultToWordFields(fields),
-      word_language:  learningLang,
-      date_added:     localToday(),
-      last_reviewed:  null,
-      total_attempts: 0,
-      error_counter:  0,
-      correct_streak: 0,
-      starred:        false,
-      mastered:       false,
-      scene:          null,
-    };
-
-    try {
-      const saved = await onAddWord(wordData);
-      setSessionAdded(prev => [saved, ...prev].slice(0, 5));
-      setSavedFlash(`"${saved.word}" saved!`);
-      setTimeout(() => setSavedFlash(''), 2500);
-      resetLookupState();
-    } catch (err) {
-      setErrorMsg(err.message || 'Failed to save word. Try again.');
-      setPhase('error');
-    }
   }
 
   // ── Save candidate ────────────────────────────────────────────────────────────
@@ -329,10 +289,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   function handleUndoAdd(id) {
     onRemoveWord(id);
     setSessionAdded(prev => prev.filter(w => w.id !== id));
-  }
-
-  function setField(key, value) {
-    setFields(f => ({ ...f, [key]: value }));
   }
 
   // ── Derived UI strings ────────────────────────────────────────────────────────
@@ -416,7 +372,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
             <span className={styles.errorText}>{errorMsg}</span>
             <div className={styles.errorActions}>
               <button className={styles.retryBtn} onClick={() => handleLookup()}>Retry</button>
-              <button className={styles.manualBtn} onClick={handleFillManually}>Fill manually</button>
             </div>
           </div>
         )}
@@ -429,13 +384,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
               {phase === 'preview' && (
                 <PreviewCard
                   fields={fields}
-                  setField={setField}
                   duplicate={duplicate}
-                  showExisting={showExisting}
-                  onToggleExisting={() => setShowExisting(s => !s)}
-                  onSave={() => handleSave(false)}
-                  onSaveAnyway={() => handleSave(true)}
-                  onDiscard={handleDiscard}
                   onSeeMore={handleSeeMore}
                   seeMoreLabel={seeMoreLabel}
                   learningLang={learningLang}
@@ -612,83 +561,64 @@ function SecondaryMiniCard({ lang, entry }) {
 
 // ── PreviewCard ───────────────────────────────────────────────────────────────
 
-function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisting, onSave, onSaveAnyway, onDiscard, onSeeMore, seeMoreLabel, learningLang, autoSaved, onUndoAutoSave }) {
+function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang, autoSaved, onUndoAutoSave }) {
   return (
     <div className={styles.previewCard} translate="no">
       <div className={styles.previewHeader}>
-        <span className={styles.previewHint}>
-          {autoSaved ? 'Saved — review or undo below' : 'Review and edit before saving'}
-        </span>
+        <span className={styles.previewHint}>Word lookup result</span>
         <SpeakerButton word={fields.word} lang={learningLang} className={styles.previewSpeaker} />
       </div>
 
-      <div className={styles.formGrid}>
-        <FormField label="Word *" required>
-          <input className={styles.formInput} value={fields.word} onChange={e => setField('word', e.target.value)} />
-          <RomanizationDisplay kana={fields.kana_reading} romanization={fields.romanization} />
-        </FormField>
-
-        <FormField label="Part of speech">
-          <input className={styles.formInput} value={fields.part_of_speech} onChange={e => setField('part_of_speech', e.target.value)} placeholder="e.g. noun, verb, phrase…" />
-        </FormField>
-
-        <FormField label="Meaning *" wide required>
-          <input className={styles.formInput} value={fields.meaning} onChange={e => setField('meaning', e.target.value)} placeholder="Meaning in your primary language" />
-        </FormField>
-
-        <FormField label="Level">
-          <select className={styles.formSelect} value={fields.recommended_level} onChange={e => setField('recommended_level', e.target.value)}>
-            <option value="">— select —</option>
-            {LEVELS.map(l => <option key={l} value={l}>{l}</option>)}
-          </select>
-        </FormField>
-
-        <FormField label="Example sentence" wide>
-          <textarea className={styles.formTextarea} rows={2} value={fields.example} onChange={e => setField('example', e.target.value)} placeholder="A natural sentence using this word" />
-        </FormField>
-
-        <FormField label="Related words" wide>
-          <input className={styles.formInput} value={fields.related_words} onChange={e => setField('related_words', e.target.value)} placeholder="Comma-separated related words" />
-        </FormField>
-
-        <FormField label="Notes" wide>
-          <textarea className={styles.formTextarea} rows={2} value={fields.other_useful_notes} onChange={e => setField('other_useful_notes', e.target.value)} placeholder="Grammar notes, usage tips…" />
-        </FormField>
+      {/* Word + romanization */}
+      <div className={styles.previewWordRow}>
+        <span className={styles.previewWord}>{fields.word}</span>
+        {fields.part_of_speech && (
+          <span className={styles.previewPos}>{fields.part_of_speech}</span>
+        )}
+        {fields.recommended_level && (
+          <span className={styles.previewLevel}>{fields.recommended_level}</span>
+        )}
       </div>
+      <RomanizationDisplay kana={fields.kana_reading} romanization={fields.romanization} />
 
-      {duplicate && (
-        <div className={styles.duplicateBox}>
-          <span className={styles.dupIcon}>⚠</span>
-          <span className={styles.dupText}><strong>"{duplicate.word}"</strong> already exists in your vocabulary.</span>
-          <div className={styles.dupActions}>
-            <button className={styles.dupViewBtn} onClick={onToggleExisting}>{showExisting ? 'Hide existing' : 'View existing'}</button>
-            <button className={styles.dupSaveBtn} onClick={onSaveAnyway}>Save anyway</button>
-          </div>
-          {showExisting && (
-            <div className={styles.existingPreview}>
-              <ExistingRow label="Word"    value={duplicate.word} />
-              <ExistingRow label="Meaning" value={duplicate.meaning} />
-              <ExistingRow label="Example" value={duplicate.example} />
-              <ExistingRow label="Level"   value={duplicate.recommended_level} />
-              <ExistingRow label="Notes"   value={duplicate.other_useful_notes} />
-            </div>
-          )}
+      {/* Core fields */}
+      {fields.meaning && (
+        <div className={styles.previewField}>
+          <span className={styles.previewFieldLabel}>Meaning</span>
+          <span className={styles.previewFieldValue}>{fields.meaning}</span>
+        </div>
+      )}
+      {fields.example && (
+        <div className={styles.previewField}>
+          <span className={styles.previewFieldLabel}>Example</span>
+          <span className={`${styles.previewFieldValue} ${styles.previewExample}`}>{fields.example}</span>
+        </div>
+      )}
+      {fields.related_words && (
+        <div className={styles.previewField}>
+          <span className={styles.previewFieldLabel}>Related</span>
+          <span className={styles.previewFieldValue}>{fields.related_words}</span>
+        </div>
+      )}
+      {fields.other_useful_notes && (
+        <div className={styles.previewField}>
+          <span className={styles.previewFieldLabel}>Notes</span>
+          <span className={styles.previewFieldValue}>{fields.other_useful_notes}</span>
         </div>
       )}
 
-      {autoSaved ? (
+      {/* Status bar */}
+      {duplicate ? (
+        <div className={styles.dupSimple}>
+          <span className={styles.dupSimpleIcon}>⚠</span>
+          <span className={styles.dupSimpleText}>Already in your vocabulary</span>
+        </div>
+      ) : autoSaved ? (
         <div className={styles.autoSavedBar}>
           <span className={styles.autoSavedText}>Saved automatically ✓</span>
           <button className={styles.autoUndoBtn} onClick={onUndoAutoSave}>Undo</button>
         </div>
-      ) : (
-        <div className={styles.previewActions}>
-          <button className={styles.saveBtn} onClick={onSave} disabled={!fields.word.trim() || !fields.meaning.trim()}>
-            Save to vocabulary
-          </button>
-          <button className={styles.discardBtn} onClick={onDiscard}>Discard</button>
-        </div>
-      )}
+      ) : null}
 
       {onSeeMore && (
         <div className={styles.seeMoreRow}>
@@ -769,25 +699,3 @@ function RomanizationDisplay({ kana, romanization }) {
   );
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function FormField({ label, children, wide, required }) {
-  return (
-    <div className={`${styles.formField} ${wide ? styles.formFieldWide : ''}`}>
-      <label className={styles.formLabel}>
-        {label}{required && <span className={styles.required}> *</span>}
-      </label>
-      {children}
-    </div>
-  );
-}
-
-function ExistingRow({ label, value }) {
-  if (!value) return null;
-  return (
-    <div className={styles.existingRow}>
-      <span className={styles.existingLabel}>{label}:</span>
-      <span className={styles.existingValue}>{value}</span>
-    </div>
-  );
-}
