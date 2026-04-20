@@ -3,6 +3,7 @@ import { buildPool, pickNext } from '../../utils/quiz';
 import { SCENES } from '../../utils/sorting';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import FlagButton from '../FlagButton/FlagButton';
+import SpeakerButton from '../SpeakerButton/SpeakerButton';
 import { logEvent } from '../../utils/events';
 import ExploreMode from './ExploreMode';
 import styles from './QuizPage.module.css';
@@ -493,6 +494,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
             onChangeAnswer={handleChangeAnswer}
             onGoBack={handleGoBack}
             onNext={startOrNext}
+            learningLang={preferences?.learning_language || 'es'}
           />
         )}
 
@@ -531,7 +533,7 @@ function IdleScreen({ pool, onStart }) {
 
 const ALL_ANSWER_TYPES = ['correct', 'wrong', 'not-sure'];
 
-function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext }) {
+function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext, learningLang }) {
   const inputRef = useRef(null);
 
   // Auto-focus the text input whenever a reverse-mode question appears
@@ -547,7 +549,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
   ].filter(Boolean).join(' ');
 
   const isHard = quizMode === 'hard'; // hard = typed production; easy = self-assessed recognition
-  const learningLang = SUPPORTED_LANGUAGES.find(l => l.code === word.word_language);
+  const learningLangObj = SUPPORTED_LANGUAGES.find(l => l.code === word.word_language);
 
   return (
     <div className={styles.cardWrap}>
@@ -580,6 +582,9 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         {!isHard && (
           <div className={styles.cardWordWrap}>
             <div className={styles.cardWord} translate="no">{word.word}</div>
+            {phase === 'revealed' && (
+              <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
+            )}
             {phase === 'revealed' && (word.kana_reading || word.romanization) && (
               <div className={styles.cardRomanization}>
                 {word.kana_reading && <span className={styles.cardKana}>{word.kana_reading}</span>}
@@ -600,6 +605,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         {isHard && phase === 'revealed' && (
           <div className={styles.cardWordWrap}>
             <div className={styles.cardWord} translate="no">{word.word}</div>
+            <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
             {(word.kana_reading || word.romanization) && (
               <div className={styles.cardRomanization}>
                 {word.kana_reading && <span className={styles.cardKana}>{word.kana_reading}</span>}
@@ -626,7 +632,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
                 ref={inputRef}
                 className={styles.reverseInput}
                 type="text"
-                placeholder={`Type the word${learningLang ? ` in ${learningLang.label}` : ''}...`}
+                placeholder={`Type the word${learningLangObj ? ` in ${learningLangObj.label}` : ''}...`}
                 value={typedAnswer}
                 onChange={e => onTypedAnswerChange(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && typedAnswer.trim()) onCheckAnswer(typedAnswer); }}

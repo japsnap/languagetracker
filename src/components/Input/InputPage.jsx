@@ -2,6 +2,7 @@ import { useState, useRef, useCallback } from 'react';
 import { lookupWord, lookupWordSingle, lookupSecondary } from '../../utils/anthropic';
 import { localToday, aiResultToWordFields } from '../../utils/vocabulary';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
+import SpeakerButton from '../SpeakerButton/SpeakerButton';
 import styles from './InputPage.module.css';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -381,6 +382,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
                   onDiscard={handleDiscard}
                   onSeeMore={handleSeeMore}
                   seeMoreLabel={seeMoreLabel}
+                  learningLang={learningLang}
                 />
               )}
 
@@ -405,6 +407,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
                           alreadyInVocab={alreadyInVocab}
                           isSaved={isSaved}
                           onSave={() => handleSaveCandidate(i)}
+                          learningLang={learningLang}
                         />
                       );
                     })}
@@ -510,7 +513,10 @@ function SecondaryMiniCard({ lang, entry }) {
         <p className={styles.miniCardError}>Could not load</p>
       ) : data ? (
         <div className={styles.miniCardBody}>
-          <p className={styles.miniCardWord}>{data.word_in_target}</p>
+          <div className={styles.miniCardWordRow}>
+            <p className={styles.miniCardWord}>{data.word_in_target}</p>
+            <SpeakerButton word={data.word_in_target} lang={lang.code} />
+          </div>
           <RomanizationDisplay kana={data.kana_reading} romanization={data.romanization} />
           <p className={styles.miniCardMeaning}>{data.meaning_brief}</p>
           {/* Native meaning — shown only when it differs from the primary-language meaning */}
@@ -548,11 +554,12 @@ function SecondaryMiniCard({ lang, entry }) {
 
 // ── PreviewCard ───────────────────────────────────────────────────────────────
 
-function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisting, onSave, onSaveAnyway, onDiscard, onSeeMore, seeMoreLabel }) {
+function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisting, onSave, onSaveAnyway, onDiscard, onSeeMore, seeMoreLabel, learningLang }) {
   return (
     <div className={styles.previewCard} translate="no">
       <div className={styles.previewHeader}>
         <span className={styles.previewHint}>Review and edit before saving</span>
+        <SpeakerButton word={fields.word} lang={learningLang} className={styles.previewSpeaker} />
       </div>
 
       <div className={styles.formGrid}>
@@ -629,12 +636,13 @@ function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisti
 
 // ── CandidateCard ─────────────────────────────────────────────────────────────
 
-function CandidateCard({ word, alreadyInVocab, isSaved, onSave }) {
+function CandidateCard({ word, alreadyInVocab, isSaved, onSave, learningLang }) {
   return (
     <div className={`${styles.candidateCard} ${isSaved ? styles.candidateSaved : ''}`} translate="no">
       <div className={styles.candidateTop}>
         <div className={styles.candidateWordRow}>
           <span className={styles.candidateWord}>{word.word}</span>
+          <SpeakerButton word={word.word} lang={learningLang} />
           {word.part_of_speech && <span className={styles.candidatePos}>{word.part_of_speech}</span>}
           {word.recommended_level && (
             <span className={styles.candidateLevel}>{word.recommended_level}</span>

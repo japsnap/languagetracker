@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { filterAndSort, SORT_OPTIONS, SCENES, ALL_LEVELS } from '../../utils/sorting';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
+import { supabase } from '../../utils/supabase';
 import WordRow from './WordRow';
 import styles from './ReviewPage.module.css';
 
@@ -13,6 +14,40 @@ const LEVEL_COLORS = {
   C2: 'var(--level-c2)',
 };
 
+// Fetch a map of { [wordId]: isoTimestamp } for words whose most recent
+// quiz_answer event was a wrong answer. RLS scopes this to the current user.
+async function fetchRecentMistakeMap() {
+  const { data } = await supabase
+    .from('user_events')
+    .select('metadata, created_at')
+    .eq('event_type', 'quiz_answer')
+    .order('created_at', { ascending: false });
+
+  if (!data) return {};
+
+  // Walk events newest→oldest; first occurrence per word_id is the most recent answer.
+  const latestPerWord = {};
+  for (const event of data) {
+    const { word_id, answer } = event.metadata || {};
+    if (!word_id || latestPerWord[word_id]) continue;
+    latestPerWord[word_id] = { answer, ts: event.created_at };
+  }
+
+  // Keep only words whose most recent answer was wrong.
+  const map = {};
+  for (const [id, { answer, ts }] of Object.entries(latestPerWord)) {
+    if (answer === 'wrong') map[id] = ts;
+  }
+  return map;
+}
+
+const WORD_TYPE_CHIPS = [
+  { value: '',       label: 'All' },
+  { value: 'word',   label: 'Word' },
+  { value: 'phrase', label: 'Phrase' },
+  { value: 'idiom',  label: 'Idiom' },
+];
+
 export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferences }) {
   const [search, setSearch]       = useState('');
   const [sortBy, setSortBy]       = useState('date-newest');
@@ -20,7 +55,12 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
   const [scene, setScene]         = useState('');
   const [levels, setLevels]       = useState([]);
   const [langFilter, setLangFilter] = useState('');
+  const [wordTypeFilter, setWordTypeFilter] = useState('');
   const [expandedId, setExpandedId]   = useState(null);
+
+  // Mistake data for 'recent-mistakes' sort — fetched lazily on first use
+  const [mistakeMap, setMistakeMap]       = useState(null); // null = not yet fetched
+  const [mistakeLoading, setMistakeLoading] = useState(false);
 
   // Bulk select
   const [selectMode, setSelectMode]   = useState(false);
@@ -38,6 +78,23 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
   );
   const hasMultipleLangs = vocabLangs.length > 1;
 
+  // Only show word_type chips when at least one phrase or idiom exists
+  const hasPhraseOrIdiom = useMemo(
+    () => words.some(w => w.word_type === 'phrase' || w.word_type === 'idiom'),
+    [words]
+  );
+
+  const learningLang = preferences?.learning_language || 'es';
+
+  // Fetch recent-mistakes data the first time that sort is selected
+  useEffect(() => {
+    if (sortBy !== 'recent-mistakes' || mistakeMap !== null || mistakeLoading) return;
+    setMistakeLoading(true);
+    fetchRecentMistakeMap()
+      .then(map => { setMistakeMap(map); setMistakeLoading(false); })
+      .catch(() => { setMistakeMap({}); setMistakeLoading(false); });
+  }, [sortBy, mistakeMap, mistakeLoading]);
+
   function toggleLevel(lvl) {
     setLevels(prev =>
       prev.includes(lvl) ? prev.filter(l => l !== lvl) : [...prev, lvl]
@@ -45,8 +102,13 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
   }
 
   const filtered = useMemo(
-    () => filterAndSort(words, { search, sortBy, starredOnly, scene, levels, language: langFilter }),
-    [words, search, sortBy, starredOnly, scene, levels, langFilter]
+    () => filterAndSort(words, {
+      search, sortBy, starredOnly, scene, levels,
+      language: langFilter,
+      wordType: wordTypeFilter,
+      mistakeTimestamps: mistakeMap,
+    }),
+    [words, search, sortBy, starredOnly, scene, levels, langFilter, wordTypeFilter, mistakeMap]
   );
 
   const isAlphaSort = sortBy === 'alpha-asc' || sortBy === 'alpha-desc';
@@ -189,6 +251,21 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
               </div>
             )}
 
+            {/* Word type filter — only shown when at least one phrase or idiom exists */}
+            {hasPhraseOrIdiom && (
+              <div className={styles.langFilter}>
+                {WORD_TYPE_CHIPS.map(({ value, label }) => (
+                  <button
+                    key={value || 'all'}
+                    className={`${styles.levelBtn} ${wordTypeFilter === value ? styles.levelActive : ''}`}
+                    onClick={() => setWordTypeFilter(value)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className={styles.levelFilter}>
               {ALL_LEVELS.map(lvl => {
                 const active = levels.includes(lvl);
@@ -215,9 +292,11 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
             </button>
 
             <span className={styles.count}>
-              {filtered.length !== words.length
-                ? `${filtered.length} / ${words.length}`
-                : `${words.length} words`}
+              {mistakeLoading && sortBy === 'recent-mistakes' ? 'Loading…' : (
+                filtered.length !== words.length
+                  ? `${filtered.length} / ${words.length}`
+                  : `${words.length} words`
+              )}
             </span>
           </>
         ) : (
@@ -254,7 +333,11 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
 
       <div className={styles.tableArea}>
         {filtered.length === 0 ? (
-          <div className={styles.empty}>No words match your filters.</div>
+          <div className={styles.empty}>
+            {mistakeLoading && sortBy === 'recent-mistakes'
+              ? 'Loading mistakes…'
+              : 'No words match your filters.'}
+          </div>
         ) : (
           <>
             <div className={styles.tableWrapper} ref={tableWrapperRef}>
@@ -287,6 +370,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
                       showLangBadge={hasMultipleLangs}
                       anchorLetter={alphaAnchorMap.get(word.id)}
                       primaryLang={preferences?.primary_language || 'en'}
+                      learningLang={learningLang}
                     />
                   ))}
                 </tbody>

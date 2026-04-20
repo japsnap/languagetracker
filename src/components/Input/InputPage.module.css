@@ -125,7 +125,8 @@
   gap: 1.25rem;
 }
 
-.previewHeader { display: flex; align-items: center; }
+.previewHeader { display: flex; align-items: center; gap: 0.5rem; }
+.previewSpeaker { margin-left: auto; }
 .previewHint {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -558,11 +559,18 @@
   gap: 0.25rem;
 }
 
+.miniCardWordRow {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
 .miniCardWord {
   font-weight: 700;
   font-size: 0.92rem;
   color: var(--text-primary);
   line-height: 1.3;
+  margin: 0;
 }
 
 .miniCardMeaning {

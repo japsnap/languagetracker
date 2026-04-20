@@ -4,6 +4,7 @@ import { fetchInsights } from '../../utils/insights';
 import { SCENES } from '../../utils/sorting';
 import FlagButton from '../FlagButton/FlagButton';
 import InsightsPanel from './InsightsPanel';
+import SpeakerButton from '../SpeakerButton/SpeakerButton';
 import styles from './WordRow.module.css';
 
 const LEVEL_COLORS = {
@@ -18,7 +19,7 @@ const LEVEL_COLORS = {
 export default function WordRow({
   word, isExpanded, onToggleExpand, onToggleStar, onUpdateWord,
   selectMode, isSelected, onToggleSelect, colCount, showLangBadge,
-  anchorLetter, primaryLang,
+  anchorLetter, primaryLang, learningLang,
 }) {
   const memLevel = memorizationLevel(word);
 
@@ -97,6 +98,7 @@ export default function WordRow({
         )}
         <td className={styles.wordCell} translate="no">
           <span className={styles.wordText}>{word.word}</span>
+          <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
           {word.mastered && <span className={styles.masteredBadge} title="Mastered">✓</span>}
           {word.scene && <span className={styles.sceneBadge}>{word.scene}</span>}
           {showLangBadge && word.word_language && (
