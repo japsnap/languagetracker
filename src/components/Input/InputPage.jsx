@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { lookupWord, lookupWordSingle, lookupSecondary } from '../../utils/anthropic';
 import { localToday, aiResultToWordFields } from '../../utils/vocabulary';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
@@ -6,6 +6,9 @@ import SpeakerButton from '../SpeakerButton/SpeakerButton';
 import styles from './InputPage.module.css';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
+
+// Auto-save on lookup — set to false to disable (or wire to user preferences)
+const AUTO_SAVE_ENABLED = true;
 
 const EMPTY_FIELDS = {
   word: '',
@@ -36,7 +39,9 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   const [sessionAdded, setSessionAdded]         = useState([]);
   const [savedFlash, setSavedFlash]             = useState('');
   const [secondaryResults, setSecondaryResults] = useState({}); // { [langCode]: { status, data } }
-  const abortRef = useRef(null);
+  const [autoSaveState, setAutoSaveState]       = useState(null); // null | { id, word }
+  const abortRef       = useRef(null);
+  const autoSaveTimer  = useRef(null);
 
   // ── Language derivations ──────────────────────────────────────────────────────
 
@@ -75,8 +80,42 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     setCandidates([]);
     setSavedIndices(new Set());
     setSecondaryResults({});
+    clearTimeout(autoSaveTimer.current);
+    setAutoSaveState(null);
     if (abortRef.current) abortRef.current.abort();
   }
+
+  // ── Auto-save helpers ─────────────────────────────────────────────────────────
+
+  async function handleAutoSave(wordData) {
+    const existing = words.find(
+      w => w.word.toLowerCase().trim() === wordData.word.toLowerCase().trim()
+    );
+    if (existing) {
+      setDuplicate(existing);
+      return;
+    }
+    try {
+      const saved = await onAddWord(wordData);
+      setSessionAdded(prev => [saved, ...prev].slice(0, 5));
+      setAutoSaveState({ id: saved.id, word: saved.word });
+      autoSaveTimer.current = setTimeout(() => setAutoSaveState(null), 5000);
+    } catch (err) {
+      // Auto-save silently failed — user can still manually save from the preview card
+      console.warn('[auto-save] failed:', err?.message);
+    }
+  }
+
+  function handleUndoAutoSave() {
+    if (!autoSaveState) return;
+    onRemoveWord(autoSaveState.id);
+    setSessionAdded(prev => prev.filter(w => w.id !== autoSaveState.id));
+    clearTimeout(autoSaveTimer.current);
+    setAutoSaveState(null);
+  }
+
+  // Cleanup timer on unmount
+  useEffect(() => () => clearTimeout(autoSaveTimer.current), []);
 
   // ── Secondary lookups ─────────────────────────────────────────────────────────
   // Always fire with the ORIGINAL input word (not the learning-language output),
@@ -128,15 +167,32 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       const result = await lookupWordSingle(term, actualInputLang, learningLang, primaryLang, controller.signal);
       clearTimeout(timeoutId);
       const resultWord = result.word || term;
-      setFields({
+      const wordFields = {
         ...aiResultToWordFields(result),
         word: resultWord,
         // string fields shown in editable form inputs need '' not null
         romanization: result.romanization || '',
         kana_reading: result.kana_reading || '',
-      });
+      };
+      setFields(wordFields);
       setPhase('preview');
       fireSecondaryLookups(term.toLowerCase().trim(), actualInputLang, secondaryLangs);
+
+      if (AUTO_SAVE_ENABLED) {
+        const wordData = {
+          ...wordFields,
+          word_language:  learningLang,
+          date_added:     localToday(),
+          last_reviewed:  null,
+          total_attempts: 0,
+          error_counter:  0,
+          correct_streak: 0,
+          starred:        false,
+          mastered:       false,
+          scene:          null,
+        };
+        handleAutoSave(wordData);
+      }
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
@@ -383,6 +439,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
                   onSeeMore={handleSeeMore}
                   seeMoreLabel={seeMoreLabel}
                   learningLang={learningLang}
+                  autoSaved={!!autoSaveState}
+                  onUndoAutoSave={handleUndoAutoSave}
                 />
               )}
 
@@ -554,11 +612,13 @@ function SecondaryMiniCard({ lang, entry }) {
 
 // ── PreviewCard ───────────────────────────────────────────────────────────────
 
-function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisting, onSave, onSaveAnyway, onDiscard, onSeeMore, seeMoreLabel, learningLang }) {
+function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisting, onSave, onSaveAnyway, onDiscard, onSeeMore, seeMoreLabel, learningLang, autoSaved, onUndoAutoSave }) {
   return (
     <div className={styles.previewCard} translate="no">
       <div className={styles.previewHeader}>
-        <span className={styles.previewHint}>Review and edit before saving</span>
+        <span className={styles.previewHint}>
+          {autoSaved ? 'Saved — review or undo below' : 'Review and edit before saving'}
+        </span>
         <SpeakerButton word={fields.word} lang={learningLang} className={styles.previewSpeaker} />
       </div>
 
@@ -616,12 +676,19 @@ function PreviewCard({ fields, setField, duplicate, showExisting, onToggleExisti
         </div>
       )}
 
-      <div className={styles.previewActions}>
-        <button className={styles.saveBtn} onClick={onSave} disabled={!fields.word.trim() || !fields.meaning.trim()}>
-          Save to vocabulary
-        </button>
-        <button className={styles.discardBtn} onClick={onDiscard}>Discard</button>
-      </div>
+      {autoSaved ? (
+        <div className={styles.autoSavedBar}>
+          <span className={styles.autoSavedText}>Saved automatically ✓</span>
+          <button className={styles.autoUndoBtn} onClick={onUndoAutoSave}>Undo</button>
+        </div>
+      ) : (
+        <div className={styles.previewActions}>
+          <button className={styles.saveBtn} onClick={onSave} disabled={!fields.word.trim() || !fields.meaning.trim()}>
+            Save to vocabulary
+          </button>
+          <button className={styles.discardBtn} onClick={onDiscard}>Discard</button>
+        </div>
+      )}
 
       {onSeeMore && (
         <div className={styles.seeMoreRow}>

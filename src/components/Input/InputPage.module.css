@@ -468,6 +468,41 @@
 
 .candidateValue { color: var(--text-secondary); }
 
+/* ── Auto-save bar ───────────────────────────────────────────────────────────── */
+
+.autoSavedBar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  background: var(--success-bg);
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-md);
+}
+
+.autoSavedText {
+  flex: 1;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.autoUndoBtn {
+  background: transparent;
+  border: 1px solid var(--success-border);
+  border-radius: var(--radius-sm);
+  color: var(--success);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  padding: 0.25rem 0.65rem;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+.autoUndoBtn:hover { background: var(--success-border); }
+
 /* ── "See more" row ──────────────────────────────────────────────────────────── */
 
 .seeMoreRow {

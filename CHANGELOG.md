@@ -179,6 +179,12 @@
   ==================================================
 
 
+## 2026-04-20 (continued again)
+
+- **Supabase Storage audio caching** — Google TTS playback now uses a three-tier cache: (1) in-memory base64 cache (existing, session-scoped); (2) in-memory URL cache for Supabase Storage URLs fetched this session; (3) `word_cache.audio_urls` JSONB column queried for a persisted public URL from a previous session. On first fetch, audio is uploaded to the `audio` Storage bucket (`{lang}/{word}.mp3`) and the public URL is written back into `word_cache.audio_urls` (read-merge-write to preserve other lang entries). Web Speech API is unaffected. SQL required: `ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS audio_urls jsonb;` — Storage bucket `audio` must be created with public read access.
+
+- **Auto-save word on lookup** — When the AI returns a result on the Input page, the word is saved to vocabulary automatically without the user clicking "Save". The PreviewCard changes to show "Saved automatically ✓" + an **Undo** button for 5 seconds; after 5 s the Undo button disappears. If the word already exists in vocabulary, auto-save is skipped and the duplicate warning is shown instead (existing behaviour). The `AUTO_SAVE_ENABLED` constant in `InputPage.jsx` can be flipped to disable this or wired to a future Settings toggle. `handleAutoSave` and `handleUndoAutoSave` are isolated helpers; `resetLookupState` always clears the auto-save timer to prevent stale state on the next lookup.
+
 ## 2026-04-20 (continued)
 
 - **Google Cloud TTS for weak-browser languages** — `speak()` now routes by language engine: Web Speech API for en/ja/de/fr/ko/zh; Google Cloud TTS (server-side) for es/pt/it/hi/ur. Config lives in `TTS_PROVIDER` map — one line to move a language between engines. Google language codes in `GOOGLE_LANG` map — one line to add a new language.
