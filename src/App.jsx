@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { AuthProvider, useAuth } from './components/Auth/AuthProvider';
+import InstallPrompt from './components/InstallPrompt/InstallPrompt';
 import LoginPage from './components/Auth/LoginPage';
 import { useVocabulary } from './hooks/useVocabulary';
 import Navigation from './components/Navigation/Navigation';
@@ -18,6 +19,7 @@ export default function App() {
   return (
     <AuthProvider>
       <AppShell />
+      <InstallPrompt />
     </AuthProvider>
   );
 }

@@ -472,6 +472,14 @@
 }
 .autoUndoBtn:hover { background: var(--success-border); }
 
+/* Post-timer quiet confirmation (no Undo button) */
+.savedConfirm {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--success);
+  padding: 0.2rem 0;
+}
+
 /* ── "See more" row ──────────────────────────────────────────────────────────── */
 
 .seeMoreRow {

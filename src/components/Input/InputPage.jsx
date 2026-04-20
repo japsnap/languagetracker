@@ -97,12 +97,10 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
       const saved = await onAddWord(wordData);
       setSessionAdded(prev => [saved, ...prev].slice(0, 5));
       setAutoSaveState({ id: saved.id, word: saved.word });
-      // After 5s Undo window: auto-close preview and show the saved flash
+      // After 10s: remove Undo button, keep card open with a quiet 'Saved ✓' message
       autoSaveTimer.current = setTimeout(() => {
-        setSavedFlash(`"${saved.word}" saved!`);
-        setTimeout(() => setSavedFlash(''), 2500);
-        resetLookupState();
-      }, 5000);
+        setAutoSaveState(prev => prev ? { word: prev.word } : null);
+      }, 10000);
     } catch (err) {
       // Auto-save silently failed — user sees the preview but no Undo bar appears
       console.warn('[auto-save] failed:', err?.message);
@@ -110,7 +108,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   }
 
   function handleUndoAutoSave() {
-    if (!autoSaveState) return;
+    if (!autoSaveState?.id) return;
     onRemoveWord(autoSaveState.id);
     setSessionAdded(prev => prev.filter(w => w.id !== autoSaveState.id));
     clearTimeout(autoSaveTimer.current);
@@ -388,7 +386,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
                   onSeeMore={handleSeeMore}
                   seeMoreLabel={seeMoreLabel}
                   learningLang={learningLang}
-                  autoSaved={!!autoSaveState}
+                  autoSaved={autoSaveState}
                   onUndoAutoSave={handleUndoAutoSave}
                 />
               )}
@@ -613,11 +611,13 @@ function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang,
           <span className={styles.dupSimpleIcon}>⚠</span>
           <span className={styles.dupSimpleText}>Already in your vocabulary</span>
         </div>
-      ) : autoSaved ? (
+      ) : autoSaved?.id ? (
         <div className={styles.autoSavedBar}>
           <span className={styles.autoSavedText}>Saved automatically ✓</span>
           <button className={styles.autoUndoBtn} onClick={onUndoAutoSave}>Undo</button>
         </div>
+      ) : autoSaved ? (
+        <div className={styles.savedConfirm}>Saved ✓</div>
       ) : null}
 
       {onSeeMore && (
