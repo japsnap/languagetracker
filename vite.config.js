@@ -7,6 +7,8 @@ export default defineConfig({
     sourcemap: false,
   },
   server: {
+    port: 5173,
+    strictPort: true,
     proxy: {
       // In dev, /api/anthropic → Anthropic's API via the Node server (no CORS)
       '/api/anthropic': {
