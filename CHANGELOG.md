@@ -179,6 +179,13 @@
   ==================================================
 
 
+## 2026-04-20 (continued)
+
+- **Google Cloud TTS for weak-browser languages** — `speak()` now routes by language engine: Web Speech API for en/ja/de/fr/ko/zh; Google Cloud TTS (server-side) for es/pt/it/hi/ur. Config lives in `TTS_PROVIDER` map — one line to move a language between engines. Google language codes in `GOOGLE_LANG` map — one line to add a new language.
+- **Session-scoped audio cache** — Google TTS responses (base64 MP3) stored in an in-memory `Map` keyed by `word_lang`. Same word is never fetched twice in a session; cache is cleared on page reload.
+- **Graceful fallback** — if Google TTS API call fails (network error, bad key, upstream error), `speak()` falls back to Web Speech API silently. No error shown to the user.
+- **`api/tts.js` serverless endpoint** — auth-gated (Supabase JWT, same pattern as `api/anthropic.js`). Accepts POST `{ word, languageCode }`, validates against allowlist, proxies to Google Cloud TTS REST API, returns `{ audioContent: base64 }`. `GOOGLE_TTS_API_KEY` env var required (add to Vercel environment variables).
+
 ## 2026-04-20
 
 - **word_type filter on Review page** — New filter chips (All / Word / Phrase / Idiom) appear in the Review toolbar when at least one phrase or idiom exists in the user's vocabulary. Filters by `word_type` column; "Word" chip includes entries where `word_type` is null (older words pre-dating the field). Works independently alongside the existing level, scene, and language filters.
