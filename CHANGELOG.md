@@ -179,6 +179,10 @@
   ==================================================
 
 
+## 2026-04-22 (cache.js audio_urls)
+
+- **FIX: `audio_urls` added to `CACHE_EXTRA_JSONB_FIELDS`** — `getCachedWord` and `findCachedWordRow` now select and return `audio_urls` alongside `ai_insights` via the shared extra-JSONB mechanism. `findCachedWordRow` also has `audio_urls` listed explicitly in its `selectCols`. `getRandomCachedExploreWord` updated to include `audio_urls` in its explicit select string.
+
 ## 2026-04-20 (audio storage fixes)
 
 - **FIX: Audio filename sanitization** — `speak.js` now uses a shared `sanitizeAudioKey()` helper that strips diacritics via NFD normalization, lowercases, and replaces non-alphanumeric characters with underscores before composing the Storage path. Example: `confrontación` → `es/confrontacion.mp3`. Consistent with `sanitizeFilename()` in `api/audio-upload.js`.

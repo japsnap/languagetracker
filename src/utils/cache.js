@@ -59,7 +59,7 @@ const CACHE_INDEXED_ALIASES = {
  * SQL migration required for current fields:
  *   ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS ai_insights jsonb;
  */
-const CACHE_EXTRA_JSONB_FIELDS = ['ai_insights'];
+const CACHE_EXTRA_JSONB_FIELDS = ['ai_insights', 'audio_urls'];
 
 /** Extract CACHE_INDEXED_FIELDS from a response (object or multi-mode array). */
 function extractIndexedFields(response) {
@@ -129,7 +129,7 @@ export async function getCachedWord(word, inputLang, learningLang, primaryLang, 
  */
 export async function findCachedWordRow(word, learningLang, primaryLang, mode) {
   const normalized = word.toLowerCase().trim();
-  const selectCols = ['input_word', 'input_language', 'result_word', 'response', ...CACHE_INDEXED_FIELDS, ...CACHE_EXTRA_JSONB_FIELDS].join(', ');
+  const selectCols = ['input_word', 'input_language', 'result_word', 'response', ...CACHE_INDEXED_FIELDS, ...CACHE_EXTRA_JSONB_FIELDS, 'audio_urls'].join(', ');
 
   // Search by result_word OR input_word — result_word matches corrected/translated words;
   // input_word fallback matches old rows and direct same-word lookups.
@@ -177,7 +177,7 @@ export async function getRandomCachedExploreWord(
 ) {
   const { data, error } = await supabase
     .from('word_cache')
-    .select('response, word_type, recommended_level')
+    .select('response, word_type, recommended_level, audio_urls')
     .eq('learning_language', learningLang)
     .eq('primary_language', primaryLang)
     .eq('word_type', wordType)
