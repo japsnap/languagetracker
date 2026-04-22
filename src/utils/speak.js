@@ -49,6 +49,24 @@ const GOOGLE_LANG = {
 };
 
 // ---------------------------------------------------------------------------
+// Shared filename sanitizer (FIX 1)
+// Strips accents, lowercases, replaces non-alphanumeric with underscore.
+// Used for both the Storage path and the audio_urls lookup key.
+// Example: 'confrontación' → 'confrontacion'
+// Must stay in sync with sanitizeFilename() in api/audio-upload.js.
+// ---------------------------------------------------------------------------
+function sanitizeAudioKey(text) {
+  const s = text
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_|_$/g, '');
+  return s || 'word';
+}
+
+// ---------------------------------------------------------------------------
 // Web Speech — voice caching + selection
 // ---------------------------------------------------------------------------
 
@@ -94,10 +112,10 @@ function speakWebSpeech(text, lang) {
 // Google Cloud TTS — three-tier cache: memory → Supabase Storage → API
 // ---------------------------------------------------------------------------
 
-// Tier 1: session-scoped base64 cache (API responses)
+// Tier 1: session-scoped base64 cache (fallback while upload is in flight)
 const ttsCache = new Map(); // key: `${text}_${lang}`, value: base64
 
-// Tier 2: session-scoped URL cache (Supabase Storage URLs fetched this session)
+// Tier 2: session-scoped URL cache (Storage URLs confirmed this session)
 const urlCache = new Map(); // key: `${text}_${lang}`, value: publicUrl
 
 async function getAuthToken() {
@@ -107,12 +125,13 @@ async function getAuthToken() {
 }
 
 // ---------------------------------------------------------------------------
-// Supabase Storage helpers
+// Supabase Storage read — check word_cache.audio_urls
 // ---------------------------------------------------------------------------
 
 /**
- * Check word_cache.audio_urls for a stored public URL for this word + lang.
- * Searches by result_word OR input_word so corrected/translated words are found.
+ * Look up a persisted public URL from word_cache.audio_urls.
+ * Searches by result_word OR input_word (same pattern as cache.js findCachedWordRow).
+ * Uses sanitizeAudioKey for consistent key lookup across sessions.
  */
 async function getCachedAudioUrl(text, lang) {
   try {
@@ -131,63 +150,6 @@ async function getCachedAudioUrl(text, lang) {
   }
 }
 
-function base64ToBlob(base64) {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return new Blob([bytes], { type: 'audio/mp3' });
-}
-
-/**
- * Upload base64 MP3 to Supabase Storage bucket 'audio' and write the public URL
- * back into word_cache.audio_urls JSONB (merged — other lang entries preserved).
- *
- * Storage path: {lang}/{sanitised_word}.mp3  (e.g. es/casa.mp3)
- * Bucket 'audio' must exist with public read access.
- * SQL required: ALTER TABLE word_cache ADD COLUMN IF NOT EXISTS audio_urls jsonb;
- *
- * Fire-and-forget — caller does not await.
- */
-async function persistAudioToStorage(text, lang, base64) {
-  try {
-    const { supabase } = await import('./supabase');
-    const normalized = text.toLowerCase().trim();
-    // Unicode-safe filename: keep letters, digits, underscore, hyphen
-    const safe = normalized.replace(/\s+/g, '_').replace(/[^\p{L}\p{N}_-]/gu, '');
-    const path = `${lang}/${safe || 'word'}.mp3`;
-
-    const { error: upErr } = await supabase.storage
-      .from('audio')
-      .upload(path, base64ToBlob(base64), { contentType: 'audio/mp3', upsert: true });
-    if (upErr) {
-      console.warn('[tts] storage upload failed:', upErr.message);
-      return;
-    }
-
-    const { data: { publicUrl } } = supabase.storage.from('audio').getPublicUrl(path);
-
-    // Merge into existing audio_urls: read row → merge → write (preserves other lang entries)
-    const { data: rows } = await supabase
-      .from('word_cache')
-      .select('id, audio_urls')
-      .or(`result_word.eq.${normalized},input_word.eq.${normalized}`)
-      .eq('mode', 'single')
-      .limit(1);
-    if (!rows || rows.length === 0) {
-      console.warn('[tts] persistAudioToStorage: no cache row to update for', normalized);
-      return;
-    }
-    const merged = { ...(rows[0].audio_urls || {}), [lang]: publicUrl };
-    await supabase.from('word_cache').update({ audio_urls: merged }).eq('id', rows[0].id);
-
-    // Warm the session URL cache so subsequent in-session calls skip the DB query
-    urlCache.set(`${text}_${lang}`, publicUrl);
-    console.log('[tts] audio persisted to storage:', path);
-  } catch (err) {
-    console.warn('[tts] persistAudioToStorage failed:', err?.message);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Google TTS playback with three-tier cache
 // ---------------------------------------------------------------------------
@@ -203,13 +165,13 @@ async function speakGoogle(text, lang) {
 
   const cacheKey = `${text}_${lang}`;
 
-  // Tier 1: memory base64 cache — populated by API responses this session
+  // Tier 1: memory base64 cache — immediate replay within session
   if (ttsCache.has(cacheKey)) {
     playBase64Mp3(ttsCache.get(cacheKey));
     return;
   }
 
-  // Tier 2: memory URL cache — populated by Storage lookups this session
+  // Tier 2: memory URL cache — Storage URLs confirmed this session
   if (urlCache.has(cacheKey)) {
     new Audio(urlCache.get(cacheKey)).play().catch(() => {});
     return;
@@ -223,12 +185,13 @@ async function speakGoogle(text, lang) {
     return;
   }
 
-  // Tier 4: Google TTS API — fetch, play, persist to Storage (fire-and-forget)
+  // Tier 4: Google TTS API → server-side Storage upload → play from URL
   try {
     const token = await getAuthToken();
     if (!token) return;
 
-    const res = await fetch('/api/tts', {
+    // Step 4a: fetch audio base64 from TTS endpoint
+    const ttsRes = await fetch('/api/tts', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -237,20 +200,42 @@ async function speakGoogle(text, lang) {
       body: JSON.stringify({ word: text, languageCode: locale }),
     });
 
-    if (!res.ok) {
-      // Server error — fall back to Web Speech silently
+    if (!ttsRes.ok) {
       speakWebSpeech(text, lang);
       return;
     }
 
-    const { audioContent } = await res.json();
+    const { audioContent } = await ttsRes.json();
     if (!audioContent) return;
 
+    // Keep base64 in memory as fallback for the duration of the upload
     ttsCache.set(cacheKey, audioContent);
-    playBase64Mp3(audioContent);
 
-    // Persist to Supabase Storage for cross-session reuse (fire-and-forget)
-    persistAudioToStorage(text, lang, audioContent);
+    // Step 4b: upload to Storage via server endpoint (bypasses RLS) and get URL
+    const uploadRes = await fetch('/api/audio-upload', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        word: text,
+        languageCode: locale,
+        audioBase64: audioContent,
+      }),
+    });
+
+    if (uploadRes.ok) {
+      const { publicUrl } = await uploadRes.json();
+      if (publicUrl) {
+        urlCache.set(cacheKey, publicUrl);
+        new Audio(publicUrl).play().catch(() => {});
+        return;
+      }
+    }
+
+    // Upload failed — fall back to base64 already in memory
+    playBase64Mp3(audioContent);
   } catch {
     // Network error — fall back to Web Speech silently
     speakWebSpeech(text, lang);
@@ -264,7 +249,7 @@ async function speakGoogle(text, lang) {
 /**
  * Speak text in the given language.
  * Routes to Google Cloud TTS or Web Speech API based on TTS_PROVIDER config.
- * Google TTS uses a three-tier cache: memory → Supabase Storage → API fetch.
+ * Google TTS: memory base64 → memory URL → Supabase Storage URL → API fetch + upload.
  * Falls back to Web Speech if Google TTS fails.
  * Fails silently if no suitable voice is available.
  *

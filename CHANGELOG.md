@@ -179,6 +179,11 @@
   ==================================================
 
 
+## 2026-04-20 (audio storage fixes)
+
+- **FIX: Audio filename sanitization** — `speak.js` now uses a shared `sanitizeAudioKey()` helper that strips diacritics via NFD normalization, lowercases, and replaces non-alphanumeric characters with underscores before composing the Storage path. Example: `confrontación` → `es/confrontacion.mp3`. Consistent with `sanitizeFilename()` in `api/audio-upload.js`.
+- **FIX: RLS bypass for Storage upload** — client-side upload (which failed Supabase RLS) replaced with a server-side `api/audio-upload.js` endpoint. Accepts POST `{ word, languageCode, audioBase64 }`, auth-gated (Supabase JWT), uses `SUPABASE_SERVICE_ROLE_KEY` to upload to the `audio` Storage bucket and update `word_cache.audio_urls` (read-merge-write). Returns `{ publicUrl }`. Client plays audio from the returned URL; base64 kept in memory as an in-flight fallback if upload fails.
+
 ## 2026-04-20 (PWA)
 
 - **PWA manifest** — `public/manifest.json`: name "LanguageTracker", short name "LangTracker", standalone display, black theme, icons at 192×192 and 512×512. `<link rel="manifest">` and `<meta name="theme-color">` added to `index.html`.
