@@ -208,11 +208,13 @@ async function speakGoogle(text, lang) {
     const { audioContent } = await ttsRes.json();
     if (!audioContent) return;
 
-    // Keep base64 in memory as fallback for the duration of the upload
+    // Play immediately from base64 — don't wait for upload
     ttsCache.set(cacheKey, audioContent);
+    playBase64Mp3(audioContent);
 
-    // Step 4b: upload to Storage via server endpoint (bypasses RLS) and get URL
-    const uploadRes = await fetch('/api/audio-upload', {
+    // Upload to Storage in the background (fire-and-forget) so future sessions
+    // can play from a cached URL instead of hitting the TTS API again.
+    fetch('/api/audio-upload', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -223,19 +225,10 @@ async function speakGoogle(text, lang) {
         languageCode: locale,
         audioBase64: audioContent,
       }),
-    });
-
-    if (uploadRes.ok) {
-      const { publicUrl } = await uploadRes.json();
-      if (publicUrl) {
-        urlCache.set(cacheKey, publicUrl);
-        new Audio(publicUrl).play().catch(() => {});
-        return;
-      }
-    }
-
-    // Upload failed — fall back to base64 already in memory
-    playBase64Mp3(audioContent);
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (data?.publicUrl) urlCache.set(cacheKey, data.publicUrl); })
+      .catch(() => {});
   } catch {
     // Network error — fall back to Web Speech silently
     speakWebSpeech(text, lang);
