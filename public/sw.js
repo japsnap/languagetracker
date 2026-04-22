@@ -8,7 +8,7 @@
  * To bust the cache: increment CACHE_NAME.
  */
 
-const CACHE_NAME = 'languagetracker-v1';
+const CACHE_NAME = 'languagetracker-v2';
 
 // Pre-cache the app shell on install
 const APP_SHELL = [
@@ -64,6 +64,23 @@ self.addEventListener('fetch', event => {
   // API / Supabase / Anthropic — let the browser handle it normally
   if (shouldSkipCache(request.url)) return;
 
+  // Navigation requests (HTML pages): network-first so users always get
+  // fresh HTML pointing to the current JS chunk filenames after a deploy.
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request)
+        .then(response => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, clone));
+          return response;
+        })
+        .catch(() => caches.match(request))
+    );
+    return;
+  }
+
+  // Static assets (JS, CSS, fonts, icons): cache-first — filenames are
+  // content-hashed so a cache hit is always the correct version.
   event.respondWith(
     caches.match(request).then(cached => {
       if (cached) return cached;
