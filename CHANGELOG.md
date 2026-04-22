@@ -179,6 +179,42 @@
   ==================================================
 
 
+## 2026-04-23 (seeded explore mode)
+
+### SQL migration — run once in Supabase SQL Editor
+```sql
+CREATE TABLE IF NOT EXISTS word_seeds (
+  id             uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  word           text        NOT NULL,
+  language       text        NOT NULL,
+  level          text        NOT NULL,
+  part_of_speech text,
+  enriched       boolean     NOT NULL DEFAULT false,
+  created_at     timestamptz DEFAULT now(),
+  UNIQUE (word, language)
+);
+CREATE TABLE IF NOT EXISTS user_seed_progress (
+  id       uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id  uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  seed_id  uuid        NOT NULL REFERENCES word_seeds(id)  ON DELETE CASCADE,
+  seen_at  timestamptz DEFAULT now(),
+  UNIQUE (user_id, seed_id)
+);
+ALTER TABLE word_seeds ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public read word_seeds" ON word_seeds FOR SELECT USING (true);
+CREATE POLICY "authenticated insert word_seeds" ON word_seeds FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "authenticated update enriched" ON word_seeds FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (true);
+ALTER TABLE user_seed_progress ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own progress" ON user_seed_progress FOR ALL USING (auth.uid() = user_id);
+```
+
+- **word_seeds table** — 600 Spanish words (A1–C2) seeded via `scripts/seeds/es-seeds.json` + `scripts/seeds/insert-seeds.js`. To add a new language: create a seed JSON file and add it to `SEED_FILES` in `insert-seeds.js`, then run the script.
+- **user_seed_progress table** — tracks which seeds each user has seen; unique on (user_id, seed_id).
+- **Seeded explore path** (`src/utils/explore.js`) — for languages with word_seeds rows: picks a random unseen seed per user+level, marks it seen, serves from word_cache if `enriched=true`, otherwise calls AI with the specific word (mode=single), saves to cache, sets `enriched=true`. Returns `{ exhausted: true }` when all seeds for the level are seen.
+- **Exhausted state** (`ExploreMode.jsx`) — new `exhausted` phase: shows "Level [X] complete" message with word count, a "Reset [X] progress" button (deletes user_seed_progress rows for that language+level via `resetSeedProgress()`), and a "Try [next level] →" button.
+- **Unseeded fallback** — languages with no word_seeds rows use the original random cache / AI flow unchanged.
+- **Cache recycling (Task 3)** — after any explore AI call (seeded or fallback), the returned word is auto-inserted into word_seeds with `enriched=true` (fire-and-forget, `ON CONFLICT DO NOTHING`). Builds the seed list organically from user lookups for unseeded languages.
+
 ## 2026-04-22 (cache.js audio_urls)
 
 - **FIX: `audio_urls` added to `CACHE_EXTRA_JSONB_FIELDS`** — `getCachedWord` and `findCachedWordRow` now select and return `audio_urls` alongside `ai_insights` via the shared extra-JSONB mechanism. `findCachedWordRow` also has `audio_urls` listed explicitly in its `selectCols`. `getRandomCachedExploreWord` updated to include `audio_urls` in its explicit select string.

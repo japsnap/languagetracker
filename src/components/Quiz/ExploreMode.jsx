@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { fetchExploreWord } from '../../utils/explore';
+import { fetchExploreWord, resetSeedProgress } from '../../utils/explore';
 import { aiResultToWordFields, localToday } from '../../utils/vocabulary';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import styles from './ExploreMode.module.css';
@@ -13,28 +13,38 @@ const LEVEL_COLORS = {
   C1: 'var(--level-c1)', C2: 'var(--level-c2)',
 };
 
+const LANG_NAMES = {
+  es: 'Spanish', pt: 'Portuguese', it: 'Italian', fr: 'French', de: 'German',
+  en: 'English',  ja: 'Japanese',  ko: 'Korean',  zh: 'Chinese', hi: 'Hindi', ur: 'Urdu',
+};
+
 /**
- * Explore mode — serves random vocabulary cards by level.
+ * Explore mode — serves vocabulary cards by level from the word_seeds table.
  *
- * Serving: checks word_cache first (free), falls back to AI.
- * Saved words go directly into the user's vocabulary via onAddWord.
+ * Seeded languages (es, etc.): tracks per-user progress via user_seed_progress.
+ *   Exhausted level → shows reset + next-level options.
+ * Unseeded languages: falls back to random cache / AI (existing behaviour).
  *
- * Extensibility: phrase/idiom filtering → pass `wordType` to fetchExploreWord.
- * Community pools → add a `pool` param to fetchExploreWord (no changes needed here).
+ * Saved words go into the user's vocabulary via onAddWord.
  */
 export default function ExploreMode({ preferences, words, onAddWord }) {
-  const [level,       setLevel]       = useState('A1');
-  const [card,        setCard]        = useState(null);
-  const [flipped,     setFlipped]     = useState(false);
-  const [phase,       setPhase]       = useState('idle'); // idle | loading | ready | error
-  const [errorMsg,    setErrorMsg]    = useState('');
-  const [savedWords,  setSavedWords]  = useState(new Set()); // saved this session
-  const [saving,      setSaving]      = useState(false);
+  const [level,         setLevel]         = useState('A1');
+  const [card,          setCard]          = useState(null);
+  const [flipped,       setFlipped]       = useState(false);
+  const [phase,         setPhase]         = useState('idle'); // idle|loading|ready|error|exhausted
+  const [errorMsg,      setErrorMsg]      = useState('');
+  const [exhaustedInfo, setExhaustedInfo] = useState(null); // { level, language, totalSeeds }
+  const [savedWords,    setSavedWords]    = useState(new Set());
+  const [saving,        setSaving]        = useState(false);
+  const [resetting,     setResetting]     = useState(false);
   const abortRef = useRef(null);
 
   const learningLang    = preferences?.learning_language || 'es';
   const primaryLang     = preferences?.primary_language  || 'en';
   const learningLangObj = SUPPORTED_LANGUAGES.find(l => l.code === learningLang);
+  const langLabel       = LANG_NAMES[learningLang] || learningLang.toUpperCase();
+
+  const nextLevel = ALL_LEVELS[ALL_LEVELS.indexOf(level) + 1] ?? null;
 
   async function loadNext(currentLevel = level) {
     if (abortRef.current) abortRef.current.abort();
@@ -45,6 +55,7 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
     setFlipped(false);
     setCard(null);
     setErrorMsg('');
+    setExhaustedInfo(null);
 
     try {
       const result = await fetchExploreWord({
@@ -54,6 +65,13 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
         wordType: 'word',
         signal: controller.signal,
       });
+
+      if (result?.exhausted) {
+        setExhaustedInfo({ level: result.level, language: result.language, totalSeeds: result.totalSeeds });
+        setPhase('exhausted');
+        return;
+      }
+
       setCard(result);
       setPhase('ready');
     } catch (err) {
@@ -63,7 +81,6 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
     }
   }
 
-  // Load on level/language change
   useEffect(() => {
     loadNext(level);
     return () => abortRef.current?.abort();
@@ -97,6 +114,26 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function handleReset() {
+    if (resetting) return;
+    setResetting(true);
+    try {
+      await resetSeedProgress({ learningLang, level });
+      await loadNext(level);
+    } catch (err) {
+      console.error('[explore] reset failed:', err);
+      setErrorMsg('Reset failed. Please try again.');
+      setPhase('error');
+    } finally {
+      setResetting(false);
+    }
+  }
+
+  function handleNextLevel() {
+    if (!nextLevel) return;
+    setLevel(nextLevel);
   }
 
   const cardWordLower = (card?.word || '').toLowerCase().trim();
@@ -143,6 +180,30 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
           </div>
         )}
 
+        {phase === 'exhausted' && exhaustedInfo && (
+          <div className={styles.exhaustedWrap}>
+            <p className={styles.exhaustedTitle}>Level {exhaustedInfo.level} complete</p>
+            <p className={styles.exhaustedMsg}>
+              You've explored all {exhaustedInfo.totalSeeds} {langLabel} {exhaustedInfo.level} words
+              in our current list. More words coming soon.
+            </p>
+            <div className={styles.exhaustedActions}>
+              <button
+                className={styles.resetBtn}
+                onClick={handleReset}
+                disabled={resetting}
+              >
+                {resetting ? 'Resetting…' : `Reset ${exhaustedInfo.level} progress`}
+              </button>
+              {nextLevel && (
+                <button className={styles.nextLevelBtn} onClick={handleNextLevel}>
+                  Try {nextLevel} →
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {phase === 'ready' && card && (
           <div className={styles.cardArea}>
 
@@ -176,7 +237,6 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
 
                   <div className={styles.wordBig} translate="no">{card.word}</div>
 
-                  {/* Romanization — same rules as rest of app: shown always on explore front */}
                   {(card.kana_reading || card.romanization) && (
                     <div className={quizStyles.cardRomanization}>
                       {card.kana_reading && (

@@ -245,6 +245,70 @@
   color: var(--text-muted);
 }
 
+/* ── Exhausted state ────────────────────────────────────────────────────────── */
+
+.exhaustedWrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 3rem;
+  max-width: 400px;
+  text-align: center;
+}
+
+.exhaustedTitle {
+  font-family: var(--font-heading);
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.exhaustedMsg {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.exhaustedActions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.resetBtn {
+  width: 100%;
+  padding: 0.7rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.resetBtn:hover:not(:disabled) { background: var(--border); }
+.resetBtn:disabled { opacity: 0.5; cursor: default; }
+
+.nextLevelBtn {
+  width: 100%;
+  padding: 0.7rem;
+  background: var(--text-primary);
+  border: 1px solid var(--text-primary);
+  border-radius: var(--radius-md);
+  color: var(--bg-base);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.nextLevelBtn:hover { opacity: 0.85; }
+
 @media (max-width: 480px) {
   .front,
   .back { padding: 1.5rem 1.25rem; }
