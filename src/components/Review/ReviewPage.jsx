@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { filterAndSort, SORT_OPTIONS, SCENES, ALL_LEVELS } from '../../utils/sorting';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
+import { WORD_TAGS, wordHasAnyTag } from '../../utils/tags';
 import { supabase } from '../../utils/supabase';
 import WordRow from './WordRow';
 import styles from './ReviewPage.module.css';
@@ -56,6 +57,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
   const [levels, setLevels]       = useState([]);
   const [langFilter, setLangFilter] = useState('');
   const [wordTypeFilter, setWordTypeFilter] = useState('');
+  const [tagFilter, setTagFilter]     = useState([]); // array of tag keys (OR logic)
   const [expandedId, setExpandedId]   = useState(null);
 
   // Mistake data for 'recent-mistakes' sort — fetched lazily on first use
@@ -81,6 +83,12 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
   // Only show word_type chips when at least one phrase or idiom exists
   const hasPhraseOrIdiom = useMemo(
     () => words.some(w => w.word_type === 'phrase' || w.word_type === 'idiom'),
+    [words]
+  );
+
+  // Only show tag filter when at least one word has a tag
+  const hasTaggedWords = useMemo(
+    () => words.some(w => Array.isArray(w.tags) && w.tags.length > 0),
     [words]
   );
 
@@ -111,15 +119,21 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
     [words, search, sortBy, starredOnly, scene, levels, langFilter, wordTypeFilter, mistakeMap]
   );
 
+  // Second filter layer: tag filter (OR logic — word must have at least one selected tag)
+  const tagFiltered = useMemo(
+    () => tagFilter.length === 0 ? filtered : filtered.filter(w => wordHasAnyTag(w, tagFilter)),
+    [filtered, tagFilter]
+  );
+
   const isAlphaSort = sortBy === 'alpha-asc' || sortBy === 'alpha-desc';
-  const showAlphaScroller = isAlphaSort && !selectMode && filtered.length > 0;
+  const showAlphaScroller = isAlphaSort && !selectMode && tagFiltered.length > 0;
 
   // wordId → letter for the first word of each letter group (A-Z only)
   const alphaAnchorMap = useMemo(() => {
     if (!isAlphaSort) return new Map();
     const map = new Map();
     const seen = new Set();
-    for (const word of filtered) {
+    for (const word of tagFiltered) {
       const letter = word.word?.[0]?.toUpperCase();
       if (letter && /[A-Z]/.test(letter) && !seen.has(letter)) {
         map.set(word.id, letter);
@@ -127,7 +141,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
       }
     }
     return map;
-  }, [filtered, isAlphaSort]);
+  }, [tagFiltered, isAlphaSort]);
 
   // Letters in list order (A→Z or Z→A, matching the current sort)
   const alphaLetters = useMemo(
@@ -182,7 +196,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
   }
 
   function handleSelectAll() {
-    setSelectedIds(new Set(filtered.map(w => w.id)));
+    setSelectedIds(new Set(tagFiltered.map(w => w.id)));
   }
 
   function handleDeselectAll() {
@@ -266,6 +280,27 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
               </div>
             )}
 
+            {/* Tag filter — only shown when at least one word has a tag */}
+            {hasTaggedWords && (
+              <div className={styles.langFilter}>
+                {WORD_TAGS.map(({ key, label, icon }) => {
+                  const active = tagFilter.includes(key);
+                  return (
+                    <button
+                      key={key}
+                      className={`${styles.levelBtn} ${active ? styles.levelActive : ''}`}
+                      title={label}
+                      onClick={() => setTagFilter(prev =>
+                        prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
+                      )}
+                    >
+                      {icon} {label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
             <div className={styles.levelFilter}>
               {ALL_LEVELS.map(lvl => {
                 const active = levels.includes(lvl);
@@ -293,8 +328,8 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
 
             <span className={styles.count}>
               {mistakeLoading && sortBy === 'recent-mistakes' ? 'Loading…' : (
-                filtered.length !== words.length
-                  ? `${filtered.length} / ${words.length}`
+                tagFiltered.length !== words.length
+                  ? `${tagFiltered.length} / ${words.length}`
                   : `${words.length} words`
               )}
             </span>
@@ -305,7 +340,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
             <span className={styles.selectInfo}>
               <strong>{selectedIds.size}</strong> selected
             </span>
-            <button className={styles.selectAllBtn} onClick={handleSelectAll}>All ({filtered.length})</button>
+            <button className={styles.selectAllBtn} onClick={handleSelectAll}>All ({tagFiltered.length})</button>
             <button className={styles.selectAllBtn} onClick={handleDeselectAll}>None</button>
 
             <select
@@ -318,7 +353,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
               <option value="__clear__">— Clear tag</option>
             </select>
 
-            <button
+              <button
               className={styles.applyBtn}
               onClick={handleApplyBulkScene}
               disabled={selectedIds.size === 0 || !bulkScene}
@@ -332,7 +367,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
       </div>
 
       <div className={styles.tableArea}>
-        {filtered.length === 0 ? (
+        {tagFiltered.length === 0 ? (
           <div className={styles.empty}>
             {mistakeLoading && sortBy === 'recent-mistakes'
               ? 'Loading mistakes…'
@@ -355,7 +390,7 @@ export default function ReviewPage({ words, onToggleStar, onUpdateWord, preferen
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map(word => (
+                  {tagFiltered.map(word => (
                     <WordRow
                       key={word.id}
                       word={word}

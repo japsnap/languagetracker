@@ -4,6 +4,7 @@ import { SCENES } from '../../utils/sorting';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import FlagButton from '../FlagButton/FlagButton';
 import SpeakerButton from '../SpeakerButton/SpeakerButton';
+import TagBar from '../TagBar/TagBar';
 import { logEvent } from '../../utils/events';
 import ExploreMode from './ExploreMode';
 import styles from './QuizPage.module.css';
@@ -494,6 +495,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
             onChangeAnswer={handleChangeAnswer}
             onGoBack={handleGoBack}
             onNext={startOrNext}
+            onUpdateWord={onUpdateWord}
             learningLang={preferences?.learning_language || 'es'}
             primaryLang={preferences?.primary_language || 'en'}
           />
@@ -534,8 +536,26 @@ function IdleScreen({ pool, onStart }) {
 
 const ALL_ANSWER_TYPES = ['correct', 'wrong', 'not-sure'];
 
-function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext, learningLang, primaryLang }) {
+function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext, onUpdateWord, learningLang, primaryLang }) {
   const inputRef = useRef(null);
+
+  // Local tag + mastered state — reset when word changes so stale snapshot doesn't persist
+  const [localTags,     setLocalTags]     = useState(word.tags ?? []);
+  const [localMastered, setLocalMastered] = useState(word.mastered ?? false);
+  useEffect(() => {
+    setLocalTags(word.tags ?? []);
+    setLocalMastered(word.mastered ?? false);
+  }, [word.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function handleTagChange(newTags) {
+    setLocalTags(newTags);
+    onUpdateWord(word.id, { tags: newTags });
+  }
+
+  function handleMarkMastered() {
+    setLocalMastered(true);
+    onUpdateWord(word.id, { mastered: true });
+  }
 
   // Auto-focus the text input whenever a reverse-mode question appears
   useEffect(() => {
@@ -706,6 +726,22 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
                   ))}
                 </div>
               )}
+
+              {/* Mastered button */}
+              <div className={styles.flagRow}>
+                {localMastered ? (
+                  <span className={styles.masteredConfirm}>Mastered ✓</span>
+                ) : (
+                  <button className={styles.masteredBtn} onClick={handleMarkMastered}>
+                    Mark as mastered
+                  </button>
+                )}
+              </div>
+
+              {/* Word tags */}
+              <div className={styles.flagRow}>
+                <TagBar tags={localTags} onChange={handleTagChange} size="sm" />
+              </div>
 
               <div className={styles.flagRow}>
                 <FlagButton wordId={word.id} wordText={word.word} />

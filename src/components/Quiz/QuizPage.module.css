@@ -354,6 +354,25 @@
 /* Flag row in reveal */
 .flagRow { display: flex; justify-content: flex-end; padding-top: 0.1rem; }
 
+/* Mastered action in reveal */
+.masteredBtn {
+  font-size: 0.78rem;
+  font-family: var(--font-body);
+  padding: 3px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: border-color 0.15s, color 0.15s;
+}
+.masteredBtn:hover { border-color: #43a047; color: #43a047; }
+.masteredConfirm {
+  font-size: 0.78rem;
+  color: #43a047;
+  font-family: var(--font-body);
+}
+
 /* ── Done screen ────────────────────────────────────────────────────────────── */
 
 .doneScreen {

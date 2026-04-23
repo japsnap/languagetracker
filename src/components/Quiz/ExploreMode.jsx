@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { fetchExploreWord, resetSeedProgress } from '../../utils/explore';
 import { aiResultToWordFields, localToday } from '../../utils/vocabulary';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
+import SpeakerButton from '../SpeakerButton/SpeakerButton';
 import styles from './ExploreMode.module.css';
 import quizStyles from './QuizPage.module.css';
 
@@ -235,7 +236,10 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
                     )}
                   </div>
 
-                  <div className={styles.wordBig} translate="no">{card.word}</div>
+                  <div className={styles.wordBigRow}>
+                    <div className={styles.wordBig} translate="no">{card.word}</div>
+                    <SpeakerButton word={card.word} lang={learningLang} />
+                  </div>
 
                   {(card.kana_reading || card.romanization) && (
                     <div className={quizStyles.cardRomanization}>
@@ -267,7 +271,10 @@ export default function ExploreMode({ preferences, words, onAddWord }) {
                     )}
                   </div>
 
-                  <div className={styles.wordSmall} translate="no">{card.word}</div>
+                  <div className={styles.wordSmallRow}>
+                    <div className={styles.wordSmall} translate="no">{card.word}</div>
+                    <SpeakerButton word={card.word} lang={learningLang} />
+                  </div>
 
                   {(card.kana_reading || card.romanization) && (
                     <div className={quizStyles.cardRomanization}>

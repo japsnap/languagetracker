@@ -3,6 +3,7 @@ import { lookupWord, lookupWordSingle, lookupSecondary } from '../../utils/anthr
 import { localToday, aiResultToWordFields } from '../../utils/vocabulary';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import SpeakerButton from '../SpeakerButton/SpeakerButton';
+import TagBar from '../TagBar/TagBar';
 import styles from './InputPage.module.css';
 
 const LEVELS = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2'];
@@ -26,7 +27,7 @@ const EMPTY_FIELDS = {
   word_alternatives: null,
 };
 
-export default function InputPage({ words, onAddWord, onRemoveWord, preferences, onUpdatePreferences, onNavigate }) {
+export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord, preferences, onUpdatePreferences, onNavigate }) {
   const [inputLang, setInputLang]               = useState(null); // null = derive from preferences
   const [inputWord, setInputWord]               = useState('');
   const [phase, setPhase]                       = useState('idle'); // idle | loading | preview | candidates | error
@@ -39,6 +40,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
   const [savedFlash, setSavedFlash]             = useState('');
   const [secondaryResults, setSecondaryResults] = useState({}); // { [langCode]: { status, data } }
   const [autoSaveState, setAutoSaveState]       = useState(null); // null | { id, word }
+  const [previewTags,   setPreviewTags]         = useState([]);
   const abortRef       = useRef(null);
   const autoSaveTimer  = useRef(null);
 
@@ -80,6 +82,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
     setSecondaryResults({});
     clearTimeout(autoSaveTimer.current);
     setAutoSaveState(null);
+    setPreviewTags([]);
     if (abortRef.current) abortRef.current.abort();
   }
 
@@ -388,6 +391,11 @@ export default function InputPage({ words, onAddWord, onRemoveWord, preferences,
                   learningLang={learningLang}
                   autoSaved={autoSaveState}
                   onUndoAutoSave={handleUndoAutoSave}
+                  previewTags={previewTags}
+                  onTagChange={autoSaveState?.id ? (newTags) => {
+                    setPreviewTags(newTags);
+                    onUpdateWord(autoSaveState.id, { tags: newTags });
+                  } : null}
                 />
               )}
 
@@ -559,7 +567,7 @@ function SecondaryMiniCard({ lang, entry }) {
 
 // ── PreviewCard ───────────────────────────────────────────────────────────────
 
-function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang, autoSaved, onUndoAutoSave }) {
+function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang, autoSaved, onUndoAutoSave, previewTags, onTagChange }) {
   return (
     <div className={styles.previewCard} translate="no">
       <div className={styles.previewHeader}>
@@ -619,6 +627,13 @@ function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang,
       ) : autoSaved ? (
         <div className={styles.savedConfirm}>Saved ✓</div>
       ) : null}
+
+      {/* Tag bar — only shown when word is saved (we have an id to write to) */}
+      {onTagChange && (
+        <div className={styles.previewTagRow}>
+          <TagBar tags={previewTags} onChange={onTagChange} size="sm" />
+        </div>
+      )}
 
       {onSeeMore && (
         <div className={styles.seeMoreRow}>

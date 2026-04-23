@@ -480,6 +480,12 @@
   padding: 0.2rem 0;
 }
 
+/* ── Tag row on preview card ────────────────────────────────────────────────── */
+
+.previewTagRow {
+  padding: 0.4rem 0 0.2rem;
+}
+
 /* ── "See more" row ──────────────────────────────────────────────────────────── */
 
 .seeMoreRow {

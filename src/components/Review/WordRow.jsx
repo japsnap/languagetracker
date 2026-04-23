@@ -5,6 +5,7 @@ import { SCENES } from '../../utils/sorting';
 import FlagButton from '../FlagButton/FlagButton';
 import InsightsPanel from './InsightsPanel';
 import SpeakerButton from '../SpeakerButton/SpeakerButton';
+import TagBar from '../TagBar/TagBar';
 import styles from './WordRow.module.css';
 
 const LEVEL_COLORS = {
@@ -182,6 +183,15 @@ export default function WordRow({
                 >
                   {word.mastered ? '✓ Mastered' : 'Mark mastered'}
                 </button>
+              </div>
+
+              {/* Word tags */}
+              <div className={styles.detailField}>
+                <span className={styles.detailLabel}>Tags</span>
+                <TagBar
+                  tags={word.tags}
+                  onChange={newTags => onUpdateWord(word.id, { tags: newTags })}
+                />
               </div>
 
               {/* Flag */}

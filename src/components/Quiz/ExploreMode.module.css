@@ -150,6 +150,14 @@
 
 /* ── Front face content ─────────────────────────────────────────────────────── */
 
+.wordBigRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
 .wordBig {
   font-family: var(--font-heading);
   font-size: clamp(2.25rem, 8vw, 3.5rem);
@@ -172,12 +180,19 @@
 
 /* ── Back face content ──────────────────────────────────────────────────────── */
 
+.wordSmallRow {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0.35rem 0 0.1rem;
+}
+
 .wordSmall {
   font-family: var(--font-heading);
   font-size: 1.6rem;
   font-weight: 700;
   color: var(--text-primary);
-  margin: 0.35rem 0 0.1rem;
+  margin: 0;
   word-break: break-word;
 }
 

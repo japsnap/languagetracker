@@ -179,6 +179,17 @@
   ==================================================
 
 
+## 2026-04-23 (word tags, mastered from quiz, explore audio)
+
+- **Word tags** — Six emoji icon tags (🔥 Difficult, ⭐ Priority, 🔄 Review, ❓ Confusing, 😄 Fun, 💼 Practical) stored as a jsonb array in `vocabulary.tags`. Tag config lives in `src/utils/tags.js` — adding a new tag requires one entry there only. `TagBar` component (`src/components/TagBar/`) renders the icon buttons: inactive = greyscale/dimmed, active = colored.
+  - **Review**: TagBar in expanded word row (detail grid). Tag filter chip row in toolbar, visible only when at least one word is tagged. OR logic: word must have any selected tag. Filter is a second layer (`tagFiltered`) on top of the existing `filterAndSort` result — all existing filters unchanged.
+  - **Quiz**: TagBar in revealed section (small size). Uses local state (`localTags`) reset on `word.id` change to handle the snapshot-current pattern. Tags persist via `onUpdateWord` (now threaded to QuizCard).
+  - **Input**: TagBar appears below the auto-save status bar when a word has been saved (has an id). Tags apply immediately via `onUpdateWord`. `previewTags` state reset in `resetLookupState()`. `onUpdateWord={updateWord}` added to InputPage in App.jsx.
+
+- **Mark as mastered from Quiz** — "Mark as mastered" button in QuizCard revealed section. Uses `localMastered` state (reset on `word.id` change). On click: sets `mastered: true` via `onUpdateWord` and shows "Mastered ✓" confirmation. One-way only (no untoggle in quiz; use Review for that).
+
+- **Speaker button on Explore card** — `SpeakerButton` added to both card faces in ExploreMode: front face (`wordBigRow` flex wrapper) and back face (`wordSmallRow` flex wrapper). Plays the word in the current learning language using the existing TTS routing (web speech / Google Cloud TTS).
+
 ## 2026-04-23 (seeded explore mode)
 
 ### SQL migration — run once in Supabase SQL Editor
