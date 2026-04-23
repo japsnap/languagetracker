@@ -191,6 +191,7 @@ export async function fetchExploreWord({
       await setCachedWord(normalized, learningLang, learningLang, primaryLang, 'single', result);
 
       // Fire-and-forget: mark enriched=true AND correct level from AI response
+      console.log('[debug] fireSeedUpdate enrich seedId:', seed.id, 'type:', typeof seed.id, 'level:', result.recommended_level);
       buildHeaders()
         .then(h => fireSeedUpdate('enrich', { seedId: seed.id, level: result.recommended_level || seed.level }, h))
         .catch(err => console.warn('[explore] seed-update header build failed:', err.message));
