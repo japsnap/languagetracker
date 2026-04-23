@@ -52,6 +52,7 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - `word_language` — language code tag per word (backfill script + saved on every add)
 - `meanings_array` (jsonb) — up to 4 primary-language meanings as array
 - `word_alternatives` (jsonb) — up to 3 learning-language synonyms as array; used in Hard quiz matching
+- `tags` (jsonb) — array of tag keys (e.g. `['difficult', 'priority']`); see `src/utils/tags.js` for config
 - `starred`, `mastered`, `total_attempts`, `correct_streak`, `error_counter`, `last_reviewed`, `date_added`
 
 ### Word Cache
@@ -79,11 +80,16 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - Go-back one word: ← Previous button; undoes DB stats if already answered; restores session counts
 - 0-attempt words shown first before weighted selection
 - Language filter chips when vocabulary spans multiple languages
+- TagBar in revealed section (small size) — tags use local state reset on word.id change; persist via onUpdateWord
+- "Mark as mastered" button in revealed section — one-way, local state pattern; use Review to untoggle
+- Hard mode wrong-answer collision hint: fire-and-forget `lookupCollision()` checks word_cache (result_word) then word_seeds; shows `"X is a valid word — which means Y"` if typed input matches a different valid word (no AI call; see `.claude/rules/quiz-answer-matching.md`)
 
 ### Review
 - Alphabet quick-scroll strip on A→Z / Z→A sorts; active letter tracking; hover popup
 - Language filter chips when vocabulary spans multiple languages
 - Bulk-select mode for multi-word operations
+- TagBar in expanded word row (detail grid) — tags saved immediately to vocabulary.tags via onUpdateWord
+- Tag filter chip row in toolbar — visible only when ≥1 word is tagged; OR logic; second filter layer over existing filterAndSort result
 
 ### Stats
 - "Quiz Performance by Mode" section: Easy and Hard cards side-by-side (stacked mobile), fetched from `user_events` per user
@@ -92,6 +98,20 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 ### UI
 - translate="no" on all word-content containers (Input, Quiz, Review, Stats)
 - Production sourcemaps disabled
+
+### Word Tags
+- Config: `src/utils/tags.js` — `WORD_TAGS` array (6 tags: difficult/priority/review/confusing/fun/practical). To add a tag: one entry here only.
+- Component: `src/components/TagBar/TagBar.jsx` — props: `tags`, `onChange`, `size ('sm'|'md')`
+- Stored in `vocabulary.tags` jsonb array
+- Shown in: Review (expanded row), Quiz (revealed section), Input (preview card after auto-save)
+- Input page requires `onUpdateWord` prop (threaded from App.jsx via `updateWord`)
+
+### Explore Mode
+- Seeded languages (word_seeds rows exist): tracks per-user progress via user_seed_progress; exhausted level shows reset + next-level options
+- Unseeded languages: random cache / AI fallback (original behaviour)
+- SpeakerButton on both card faces (front: wordBigRow wrapper; back: wordSmallRow wrapper)
+- `src/utils/explore.js` — seeded cache-miss path uses `mode='single'` + `word=seed.word` (invariant: never swap to mode='explore')
+- `api/seed-update.js` — enrich (PATCH by seedId) + add_seed (upsert by word+language); called fire-and-forget
 
 ## Serverless Functions (api/)
 - `api/anthropic.js` — AI word lookup proxy, auth-gated (401 for unauthenticated)
