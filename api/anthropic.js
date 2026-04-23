@@ -234,8 +234,6 @@ export default async function handler(req, res) {
     mode, level, word_type, part_of_speech,
   } = req.body ?? {};
 
-  console.log('[debug] anthropic mode:', mode);
-
   let systemPrompt, userMessage;
 
   if (mode === 'explore') {

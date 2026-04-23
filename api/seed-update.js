@@ -76,7 +76,8 @@ export default async function handler(req, res) {
   if (action === 'enrich') {
     const { seedId, level } = payload ?? {};
 
-    if (!seedId || typeof seedId !== 'string' || !level || !VALID_LEVELS.has(level)) {
+    if (!seedId || !level || !VALID_LEVELS.has(level)) {
+      console.error('[seed-update] enrich 400: seedId=', seedId, 'typeof seedId=', typeof seedId, 'level=', level, 'level_valid=', VALID_LEVELS.has(level));
       return res.status(400).json({ error: 'Invalid payload for enrich: seedId and valid level required' });
     }
 

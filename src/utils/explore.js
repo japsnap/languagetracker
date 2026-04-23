@@ -176,13 +176,13 @@ export async function fetchExploreWord({
         return cached;
       }
 
-      // Cache miss — call AI with the specific seed word
+      // Cache miss — call AI using explore mode (never triggers seed-update in anthropic.js)
       const text = await callExploreAPI({
-        word:             seed.word,
-        input_language:   learningLang,
         learning_language: learningLang,
         primary_language:  primaryLang,
-        mode:             'single',
+        level,
+        word_type:        wordType,
+        mode:             'explore',
       }, signal);
 
       const result = parseResult(text, 'Could not parse explore word response. Try again.');
@@ -191,7 +191,6 @@ export async function fetchExploreWord({
       await setCachedWord(normalized, learningLang, learningLang, primaryLang, 'single', result);
 
       // Fire-and-forget: mark enriched=true AND correct level from AI response
-      console.log('[debug] fireSeedUpdate enrich seedId:', seed.id, 'type:', typeof seed.id, 'level:', result.recommended_level);
       buildHeaders()
         .then(h => fireSeedUpdate('enrich', { seedId: seed.id, level: result.recommended_level || seed.level }, h))
         .catch(err => console.warn('[explore] seed-update header build failed:', err.message));

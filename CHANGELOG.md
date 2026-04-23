@@ -223,6 +223,12 @@ CREATE POLICY "users manage own progress" ON user_seed_progress FOR ALL USING (a
 - **FIX: explore.js seeded AI path** — after AI enriches a seed word, replaced the direct `supabase.update({ enriched: true })` call with a fire-and-forget POST to `/api/seed-update` (`action='enrich'`). The new call also sends `level: result.recommended_level` so the seed row's level is corrected to the AI-returned value, not just left at the original seed level.
 - **Cache recycling via Input page** — `api/anthropic.js` now fires a seed-update (`action='add_seed'`) after every successful `mode='single'` lookup. Parses the AI response text to extract `word`, `recommended_level`, and `part_of_speech`, then POSTs to `/api/seed-update` fire-and-forget. The main lookup response is never delayed or blocked. Only `mode='single'` triggers this; `secondary`, `explore`, and `multi` do not.
 
+## 2026-04-23 (explore mode + enrich validation fixes)
+
+- **FIX: explore seeded path uses mode='explore'** — `src/utils/explore.js` cache-miss AI call changed from `mode='single'` (with word/input_language) to `mode='explore'` (with level/word_type). Prevents `api/anthropic.js` from firing a redundant `add_seed` for words already in `word_seeds`; explore's own `fireSeedUpdate('enrich', ...)` handles enrichment. The existing `['single'].includes(mode)` allowlist in `api/anthropic.js` blocks `mode='explore'` from triggering seed-update.
+- **FIX: enrich seedId type validation** — `api/seed-update.js` enrich action removed `typeof seedId !== 'string'` check; any truthy seedId (integer or string) is now accepted. Diagnostic `console.error` log added before the 400 path to surface which validation check fails.
+- Removed temporary `[debug]` console.log statements from `api/anthropic.js` and `src/utils/explore.js`.
+
 ## 2026-04-23 (seed-update fixes)
 
 - **FIX: add_seed conflict handling** — `api/seed-update.js` `add_seed` action now uses a two-attempt strategy: (1) INSERT with `Prefer: resolution=merge-duplicates` (upsert); (2) if that returns any non-OK status (including 409), falls back to an explicit `PATCH word_seeds WHERE word=? AND language=?` to update `enriched=true` + `level`. Conflicts never produce a 4XX/5XX response — an existing row is always updated and 200 returned.
