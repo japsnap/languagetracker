@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { buildPool, pickNext } from '../../utils/quiz';
 import { SCENES } from '../../utils/sorting';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
+import { supabase } from '../../utils/supabase';
 import FlagButton from '../FlagButton/FlagButton';
 import SpeakerButton from '../SpeakerButton/SpeakerButton';
 import TagBar from '../TagBar/TagBar';
@@ -89,6 +90,73 @@ function answersMatch(input, correct, langCode = null) {
   return levenshtein(a, b) <= 1;
 }
 
+/**
+ * Normalize a string for accent-insensitive matching:
+ * strip diacritics → lowercase → trim.
+ * Same logic as stripDiacritics above + lowercase/trim.
+ */
+function normalizeForMatch(s) {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+}
+
+/**
+ * Check whether typedInput matches any word in word_cache (result_word column)
+ * or word_seeds (word column) for the given learningLang.
+ * No AI call — pure Supabase queries + client-side accent normalization.
+ *
+ * Returns { correctedWord, meaning } if a match is found,
+ * where meaning is null when only word_seeds matched (no cache row).
+ * Returns null if no match.
+ */
+async function lookupCollision(typedInput, learningLang) {
+  try {
+    const normalizedInput = normalizeForMatch(typedInput);
+    if (normalizedInput.length < 2) return null;
+
+    // Use a prefix to limit DB scan; client-side filter handles accents
+    const prefix = normalizedInput.slice(0, 3);
+
+    // 1. Check word_cache (result_word column, mode='single')
+    const { data: cacheRows } = await supabase
+      .from('word_cache')
+      .select('result_word, response')
+      .eq('learning_language', learningLang)
+      .eq('mode', 'single')
+      .ilike('result_word', `${prefix}%`)
+      .not('result_word', 'is', null)
+      .limit(50);
+
+    const cacheMatch = (cacheRows || []).find(
+      row => row.result_word && normalizeForMatch(row.result_word) === normalizedInput
+    );
+
+    if (cacheMatch) {
+      const meaning = cacheMatch.response?.meaning || null;
+      return { correctedWord: cacheMatch.result_word, meaning };
+    }
+
+    // 2. Fallback: check word_seeds (word column)
+    const { data: seedRows } = await supabase
+      .from('word_seeds')
+      .select('word')
+      .eq('language', learningLang)
+      .ilike('word', `${prefix}%`)
+      .limit(50);
+
+    const seedMatch = (seedRows || []).find(
+      row => row.word && normalizeForMatch(row.word) === normalizedInput
+    );
+
+    if (seedMatch) {
+      return { correctedWord: seedMatch.word, meaning: null };
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }) {
   const [settings, setSettings] = useState({
     levels: [],
@@ -108,6 +176,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   const [exploreMode, setExploreMode] = useState(() => words.length === 0);
   const [typedAnswer, setTypedAnswer] = useState('');
   const [langFilter, setLangFilter] = useState('');
+  const [collisionInfo, setCollisionInfo] = useState(null); // { correctedWord, meaning } | null
 
   // Enter key advances to next word during revealed phase.
   // Deferred via setTimeout(0) so the keydown that triggered the reveal
@@ -187,6 +256,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     setLastAnswer(null);
     setHasChanged(false);
     setTypedAnswer('');
+    setCollisionInfo(null);
     setPhase('question');
   }
 
@@ -261,12 +331,18 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   );
 
   // Hard mode: compare typed input against the word and any stored alternatives.
+  // On wrong answer: fire an async collision check against word_cache + word_seeds.
   function handleCheckAnswer(typed) {
     if (!typed.trim() || !current) return;
     const lang = current.word_language || preferences?.learning_language || null;
     const isCorrect = answersMatch(typed, current.word, lang) ||
       (Array.isArray(current.word_alternatives) &&
         current.word_alternatives.some(alt => answersMatch(typed, alt, lang)));
+    if (!isCorrect) {
+      const lookupLang = current.word_language || preferences?.learning_language || 'es';
+      setCollisionInfo(null);
+      lookupCollision(typed, lookupLang).then(setCollisionInfo);
+    }
     handleAnswer(isCorrect ? 'correct' : 'wrong');
   }
 
@@ -307,6 +383,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     setPrevEntry(null);
     setCanGoBack(false);
     setTypedAnswer('');
+    setCollisionInfo(null);
   }
 
   const reviewed = session.correct + session.wrong + session.notSure;
@@ -496,6 +573,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
             onGoBack={handleGoBack}
             onNext={startOrNext}
             onUpdateWord={onUpdateWord}
+            collisionInfo={collisionInfo}
             learningLang={preferences?.learning_language || 'es'}
             primaryLang={preferences?.primary_language || 'en'}
           />
@@ -536,7 +614,7 @@ function IdleScreen({ pool, onStart }) {
 
 const ALL_ANSWER_TYPES = ['correct', 'wrong', 'not-sure'];
 
-function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext, onUpdateWord, learningLang, primaryLang }) {
+function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext, onUpdateWord, collisionInfo, learningLang, primaryLang }) {
   const inputRef = useRef(null);
 
   // Local tag + mastered state — reset when word changes so stale snapshot doesn't persist
@@ -602,8 +680,10 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         {/* ── Normal mode: word is the question ── */}
         {!isHard && (
           <div className={styles.cardWordWrap}>
-            <div className={styles.cardWord} translate="no">{word.word}</div>
-            <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
+            <div className={styles.cardWordRow}>
+              <div className={styles.cardWord} translate="no">{word.word}</div>
+              <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
+            </div>
             {phase === 'revealed' && (word.kana_reading || word.romanization) && (
               <div className={styles.cardRomanization}>
                 {word.kana_reading && <span className={styles.cardKana}>{word.kana_reading}</span>}
@@ -624,8 +704,10 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
         {/* ── Reverse mode revealed: show the correct word ── */}
         {isHard && phase === 'revealed' && (
           <div className={styles.cardWordWrap}>
-            <div className={styles.cardWord} translate="no">{word.word}</div>
-            <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
+            <div className={styles.cardWordRow}>
+              <div className={styles.cardWord} translate="no">{word.word}</div>
+              <SpeakerButton word={word.word} lang={word.word_language || learningLang} />
+            </div>
             {(word.kana_reading || word.romanization) && (
               <div className={styles.cardRomanization}>
                 {word.kana_reading && <span className={styles.cardKana}>{word.kana_reading}</span>}
@@ -697,6 +779,20 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
                     <span className={styles.compCellValue} translate="no">{word.word}</span>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Collision hint — shown when wrong typed answer matches a different valid word */}
+            {isHard && typedAnswer && lastAnswer === 'wrong' && collisionInfo && (
+              <div className={styles.collisionCard} translate="no">
+                <span className={styles.collisionIcon}>💡</span>
+                <span className={styles.collisionText}>
+                  <strong>{collisionInfo.correctedWord}</strong>
+                  {collisionInfo.meaning
+                    ? ` means "${collisionInfo.meaning}" — but that's not what we're looking for here!`
+                    : ` is a valid word — but that's not what we're looking for here!`
+                  }
+                </span>
               </div>
             )}
 

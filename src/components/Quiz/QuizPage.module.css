@@ -229,6 +229,14 @@
   align-items: center;
 }
 
+/* Inline row: word text + speaker button side-by-side (FIX 1) */
+.cardWordRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
 .cardWord {
   font-family: var(--font-heading);
   font-size: clamp(2rem, 6vw, 3.25rem);
@@ -518,6 +526,23 @@
   color: var(--text-primary);
   word-break: break-word;
 }
+
+/* Collision hint card — shown when wrong typed answer is a different valid word */
+.collisionCard {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  margin-top: 0.5rem;
+  background: #f0f7ff;
+  border: 1px solid #b3d4f5;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #1a3a5c;
+  line-height: 1.45;
+}
+.collisionIcon { flex-shrink: 0; font-size: 1rem; margin-top: 0.05rem; }
+.collisionText { flex: 1; }
 
 @media (max-width: 640px) {
   .answerButtons { flex-direction: column; }

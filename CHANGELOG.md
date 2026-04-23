@@ -179,6 +179,18 @@
   ==================================================
 
 
+## 2026-04-24 (quiz speaker position + wrong-answer collision hint)
+
+- **FIX: Easy mode speaker button position** — `SpeakerButton` was stacking below the word because `cardWordWrap` is `flex-direction: column`. Added `.cardWordRow` inline flex wrapper inside `cardWordWrap` so the word and speaker sit side-by-side (same pattern as Review and Input cards). Applied to both Easy mode question face and Hard mode revealed face.
+
+- **FIX: Wrong-answer collision hint (Hard mode)** — When the user types a wrong answer that doesn't match the current quiz word, the app now checks whether the typed input matches a *different* valid word in the database (no AI call, no new endpoint). Lookup flow:
+  1. Strip diacritics + lowercase + trim the typed input.
+  2. Query `word_cache` for `result_word` entries starting with the same 3-char prefix (`learning_language = currentWordLang, mode = 'single'`), fetch up to 50 rows, filter client-side by normalized match.
+  3. If no cache hit: query `word_seeds` by the same prefix + `language = currentWordLang`, filter client-side.
+  4. On match: show a subtle blue info card — `"'{correctedWord}' means '{meaning}' — but that's not what we're looking for here!"` (meaning omitted when only a seed match, no cache row). The corrected word uses the properly-accented form from the DB (not the user's typo).
+  - The collision card is fire-and-forget (`lookupCollision` resolves after `handleAnswer` runs) so quiz flow is never blocked. Card resets on every new word.
+  - Accent normalization uses the same NFD+diacritic-strip logic as `stripDiacritics` in the quiz answer matcher, ensuring "buenisima" matches "buenísima".
+
 ## 2026-04-23 (word tags, mastered from quiz, explore audio)
 
 - **Word tags** — Six emoji icon tags (🔥 Difficult, ⭐ Priority, 🔄 Review, ❓ Confusing, 😄 Fun, 💼 Practical) stored as a jsonb array in `vocabulary.tags`. Tag config lives in `src/utils/tags.js` — adding a new tag requires one entry there only. `TagBar` component (`src/components/TagBar/`) renders the icon buttons: inactive = greyscale/dimmed, active = colored.
