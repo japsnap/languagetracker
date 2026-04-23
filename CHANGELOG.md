@@ -223,6 +223,11 @@ CREATE POLICY "users manage own progress" ON user_seed_progress FOR ALL USING (a
 - **FIX: explore.js seeded AI path** — after AI enriches a seed word, replaced the direct `supabase.update({ enriched: true })` call with a fire-and-forget POST to `/api/seed-update` (`action='enrich'`). The new call also sends `level: result.recommended_level` so the seed row's level is corrected to the AI-returned value, not just left at the original seed level.
 - **Cache recycling via Input page** — `api/anthropic.js` now fires a seed-update (`action='add_seed'`) after every successful `mode='single'` lookup. Parses the AI response text to extract `word`, `recommended_level`, and `part_of_speech`, then POSTs to `/api/seed-update` fire-and-forget. The main lookup response is never delayed or blocked. Only `mode='single'` triggers this; `secondary`, `explore`, and `multi` do not.
 
+## 2026-04-23 (seed-update fixes)
+
+- **FIX: add_seed conflict handling** — `api/seed-update.js` `add_seed` action now uses a two-attempt strategy: (1) INSERT with `Prefer: resolution=merge-duplicates` (upsert); (2) if that returns any non-OK status (including 409), falls back to an explicit `PATCH word_seeds WHERE word=? AND language=?` to update `enriched=true` + `level`. Conflicts never produce a 4XX/5XX response — an existing row is always updated and 200 returned.
+- **FIX: seed-update mode allowlist** — `api/anthropic.js` fire-and-forget seed-update now guards with `['single'].includes(mode)` (explicit allowlist) instead of `mode === 'single'`. Makes intent unambiguous: `multi`, `secondary`, `explore`, `insights`, and any quiz-related modes are categorically excluded from triggering seed-update.
+
 ## 2026-04-22 (cache.js audio_urls)
 
 - **FIX: `audio_urls` added to `CACHE_EXTRA_JSONB_FIELDS`** — `getCachedWord` and `findCachedWordRow` now select and return `audio_urls` alongside `ai_insights` via the shared extra-JSONB mechanism. `findCachedWordRow` also has `audio_urls` listed explicitly in its `selectCols`. `getRandomCachedExploreWord` updated to include `audio_urls` in its explicit select string.

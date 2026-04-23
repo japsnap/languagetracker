@@ -110,8 +110,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Invalid payload for add_seed: word, valid language, and valid level required' });
     }
 
-    // INSERT … ON CONFLICT (word, language) DO UPDATE SET level, enriched=true
-    const r = await fetch(
+    const normalizedWord = word.toLowerCase().trim();
+
+    // Attempt 1: INSERT with ON CONFLICT (word, language) DO UPDATE
+    const insertRes = await fetch(
       `${supabaseUrl}/rest/v1/word_seeds`,
       {
         method: 'POST',
@@ -119,22 +121,40 @@ export default async function handler(req, res) {
           Prefer: 'resolution=merge-duplicates,return=minimal',
         }),
         body: JSON.stringify({
-          word:          word.toLowerCase().trim(),
+          word:           normalizedWord,
           language,
           level,
           part_of_speech: part_of_speech || null,
-          enriched:      true,
+          enriched:       true,
         }),
       },
     );
 
-    if (!r.ok) {
-      const text = await r.text();
-      console.error('[seed-update] add_seed failed:', r.status, text);
+    if (insertRes.ok) {
+      console.log('[seed-update] add_seed (upsert):', normalizedWord, language, level);
+      return res.status(200).json({ success: true });
+    }
+
+    // Attempt 2: explicit PATCH for the existing row (handles 409 conflict and other insert failures).
+    // A conflict means the word already exists — update enriched + level and return 200.
+    console.warn(`[seed-update] add_seed upsert returned ${insertRes.status}, falling back to PATCH`);
+
+    const patchRes = await fetch(
+      `${supabaseUrl}/rest/v1/word_seeds?word=eq.${encodeURIComponent(normalizedWord)}&language=eq.${encodeURIComponent(language)}`,
+      {
+        method: 'PATCH',
+        headers: serviceHeaders(serviceRoleKey, { Prefer: 'return=minimal' }),
+        body: JSON.stringify({ enriched: true, level }),
+      },
+    );
+
+    if (!patchRes.ok) {
+      const text = await patchRes.text();
+      console.error('[seed-update] add_seed PATCH fallback failed:', patchRes.status, text);
       return res.status(500).json({ error: 'DB write failed' });
     }
 
-    console.log('[seed-update] add_seed:', word, language, level);
+    console.log('[seed-update] add_seed (patch fallback):', normalizedWord, language, level);
     return res.status(200).json({ success: true });
 
   // ── unknown action ──────────────────────────────────────────────────────────

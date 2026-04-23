@@ -302,9 +302,10 @@ export default async function handler(req, res) {
 
     const data = await upstream.json();
 
-    // Cache recycling — for mode='single' lookups, auto-seed the word into word_seeds.
-    // Fire-and-forget: never blocks or alters the main response.
-    if (mode === 'single' && upstream.ok) {
+    // Cache recycling — only for mode='single' (Input page lookup).
+    // Explicit allowlist: 'multi', 'secondary', 'explore', 'insights', and any quiz-related
+    // modes are excluded. Fire-and-forget: never blocks or alters the main response.
+    if (upstream.ok && ['single'].includes(mode)) {
       try {
         const textContent = data.content?.[0]?.text ?? '';
         const jsonMatch   = textContent.match(/\{[\s\S]*\}/);
