@@ -65,6 +65,19 @@ function parseResult(text, errorMsg) {
 // ── Seed helpers ──────────────────────────────────────────────────────────────
 
 /**
+ * Fire-and-forget POST to /api/seed-update.
+ * Passes the current session's Authorization header so the endpoint can verify the JWT.
+ * Errors are logged as warnings and never bubble up.
+ */
+function fireSeedUpdate(action, payload, headers) {
+  fetch('/api/seed-update', {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, payload }),
+  }).catch(err => console.warn('[explore] seed-update failed:', err.message));
+}
+
+/**
  * Auto-seed a word into word_seeds after an AI call.
  * Fire-and-forget — silently ignored if RLS denies or conflict exists.
  */
@@ -176,7 +189,11 @@ export async function fetchExploreWord({
       const normalized = (result.word || seed.word).toLowerCase().trim();
 
       await setCachedWord(normalized, learningLang, learningLang, primaryLang, 'single', result);
-      supabase.from('word_seeds').update({ enriched: true }).eq('id', seed.id).then(() => {}).catch(() => {});
+
+      // Fire-and-forget: mark enriched=true AND correct level from AI response
+      buildHeaders()
+        .then(h => fireSeedUpdate('enrich', { seedId: seed.id, level: result.recommended_level || seed.level }, h))
+        .catch(err => console.warn('[explore] seed-update header build failed:', err.message));
 
       logEvent('word_lookup', {
         mode: 'explore', learning: learningLang, primary: primaryLang, level, cache_hit: false,

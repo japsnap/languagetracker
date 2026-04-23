@@ -301,6 +301,41 @@ export default async function handler(req, res) {
     });
 
     const data = await upstream.json();
+
+    // Cache recycling — for mode='single' lookups, auto-seed the word into word_seeds.
+    // Fire-and-forget: never blocks or alters the main response.
+    if (mode === 'single' && upstream.ok) {
+      try {
+        const textContent = data.content?.[0]?.text ?? '';
+        const jsonMatch   = textContent.match(/\{[\s\S]*\}/);
+        const parsed      = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+        if (parsed?.word && parsed?.recommended_level) {
+          const proto = req.headers['x-forwarded-proto']?.split(',')[0]?.trim() || 'https';
+          const host  = req.headers['x-forwarded-host'] || req.headers.host || '';
+          if (host) {
+            fetch(`${proto}://${host}/api/seed-update`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: req.headers.authorization,
+              },
+              body: JSON.stringify({
+                action: 'add_seed',
+                payload: {
+                  word:           parsed.word,
+                  language:       learning_language,
+                  level:          parsed.recommended_level,
+                  part_of_speech: parsed.part_of_speech || null,
+                },
+              }),
+            }).catch(err => console.warn('[anthropic] seed-update failed:', err.message));
+          }
+        }
+      } catch {
+        // Parse error — skip silently; never block the lookup response
+      }
+    }
+
     return res.status(upstream.status).json(data);
   } catch (err) {
     return res.status(500).json({ error: err.message });

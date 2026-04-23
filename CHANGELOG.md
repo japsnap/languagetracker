@@ -215,6 +215,14 @@ CREATE POLICY "users manage own progress" ON user_seed_progress FOR ALL USING (a
 - **Unseeded fallback** — languages with no word_seeds rows use the original random cache / AI flow unchanged.
 - **Cache recycling (Task 3)** — after any explore AI call (seeded or fallback), the returned word is auto-inserted into word_seeds with `enriched=true` (fire-and-forget, `ON CONFLICT DO NOTHING`). Builds the seed list organically from user lookups for unseeded languages.
 
+## 2026-04-23 (seed-update endpoint + cache recycling)
+
+- **`api/seed-update.js`** — new auth-gated serverless endpoint. POST only. Verifies Supabase JWT (same pattern as `api/anthropic.js`). Uses `SUPABASE_SERVICE_ROLE_KEY` to bypass RLS for `word_seeds` writes. Two actions:
+  - `enrich` — `PATCH word_seeds SET enriched=true, level=? WHERE id=?`. Used when explore mode enriches a seed via AI; corrects the level field from the AI response alongside the enriched flag.
+  - `add_seed` — `INSERT … ON CONFLICT (word, language) DO UPDATE SET level, enriched=true`. Used for cache recycling; upserts any looked-up word into word_seeds.
+- **FIX: explore.js seeded AI path** — after AI enriches a seed word, replaced the direct `supabase.update({ enriched: true })` call with a fire-and-forget POST to `/api/seed-update` (`action='enrich'`). The new call also sends `level: result.recommended_level` so the seed row's level is corrected to the AI-returned value, not just left at the original seed level.
+- **Cache recycling via Input page** — `api/anthropic.js` now fires a seed-update (`action='add_seed'`) after every successful `mode='single'` lookup. Parses the AI response text to extract `word`, `recommended_level`, and `part_of_speech`, then POSTs to `/api/seed-update` fire-and-forget. The main lookup response is never delayed or blocked. Only `mode='single'` triggers this; `secondary`, `explore`, and `multi` do not.
+
 ## 2026-04-22 (cache.js audio_urls)
 
 - **FIX: `audio_urls` added to `CACHE_EXTRA_JSONB_FIELDS`** — `getCachedWord` and `findCachedWordRow` now select and return `audio_urls` alongside `ai_insights` via the shared extra-JSONB mechanism. `findCachedWordRow` also has `audio_urls` listed explicitly in its `selectCols`. `getRandomCachedExploreWord` updated to include `audio_urls` in its explicit select string.

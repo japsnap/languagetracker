@@ -96,6 +96,9 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 ## Serverless Functions (api/)
 - `api/anthropic.js` — AI word lookup proxy, auth-gated (401 for unauthenticated)
 - `api/admin-stats.js` — cross-user vocabulary count, admin-gated (403 for non-admin)
+- `api/seed-update.js` — word_seeds writes (enrich + add_seed), auth-gated, service-role key; called fire-and-forget from explore.js and anthropic.js
+
+> **Note:** Option C (nightly cron for seed recycling) flagged for future security upgrade — applies to any server-side fire-and-forget write pattern in the app.
 
 ## One-time Scripts (scripts/)
 - `migrations/001_word_cache_three_role.sql` — adds UNIQUE constraint to word_cache (already run)
