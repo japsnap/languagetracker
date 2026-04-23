@@ -176,13 +176,18 @@ export async function fetchExploreWord({
         return cached;
       }
 
-      // Cache miss — call AI using explore mode (never triggers seed-update in anthropic.js)
+      // Cache miss — call AI with the specific seed word (single-word lookup prompt).
+      // mode='single' uses buildPrimaryPrompt, which is correct for a known specific word.
+      // anthropic.js also fires add_seed for this call — that is a harmless upsert since
+      // the word already exists in word_seeds; it updates enriched+level as a side effect.
+      // fireSeedUpdate('enrich') below handles the precise update by seedId, which is more
+      // accurate than add_seed's word+language key when the AI corrects spelling.
       const text = await callExploreAPI({
+        word:              seed.word,
+        input_language:    learningLang,
         learning_language: learningLang,
         primary_language:  primaryLang,
-        level,
-        word_type:        wordType,
-        mode:             'explore',
+        mode:              'single',
       }, signal);
 
       const result = parseResult(text, 'Could not parse explore word response. Try again.');

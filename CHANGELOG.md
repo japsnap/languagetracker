@@ -223,6 +223,14 @@ CREATE POLICY "users manage own progress" ON user_seed_progress FOR ALL USING (a
 - **FIX: explore.js seeded AI path** — after AI enriches a seed word, replaced the direct `supabase.update({ enriched: true })` call with a fire-and-forget POST to `/api/seed-update` (`action='enrich'`). The new call also sends `level: result.recommended_level` so the seed row's level is corrected to the AI-returned value, not just left at the original seed level.
 - **Cache recycling via Input page** — `api/anthropic.js` now fires a seed-update (`action='add_seed'`) after every successful `mode='single'` lookup. Parses the AI response text to extract `word`, `recommended_level`, and `part_of_speech`, then POSTs to `/api/seed-update` fire-and-forget. The main lookup response is never delayed or blocked. Only `mode='single'` triggers this; `secondary`, `explore`, and `multi` do not.
 
+## 2026-04-23 (revert seeded explore path to mode=single)
+
+- **ROOT CAUSE FIX: seeded explore path reverted to `mode='single'`** — The previous update changed the seeded cache-miss AI call from `mode='single'` (specific word lookup) to `mode='explore'` (random word generation). This broke three things: (1) AI ignored seed.word entirely, generating arbitrary common words that repeated across seeds; (2) the cache was written under the random result word but looked up by seed.word, so the cache always missed; (3) the `enrich` fire-and-forget patched the seed row's level with the random word's level, corrupting level data. The seeded path is now correctly restored to `mode='single'` with `word=seed.word`, matching `getCachedWord(seed.word, ..., 'single')` exactly.
+
+- **Mode semantics (invariant):** `mode='single'` = look up a specific known word (buildPrimaryPrompt). `mode='explore'` = generate a random word at a given level (buildExplorePrompt). The seeded path always needs the former; the unseeded fallback path always uses the latter. These must never be swapped.
+
+- **`fireSeedUpdate('enrich', { seedId, level })`** — kept alongside the `add_seed` that fires from `anthropic.js` for mode='single'. Both are harmless fire-and-forget upserts targeting the same row in normal operation. `enrich` (by seedId) is more precise when AI corrects spelling and the result word differs from the seed word.
+
 ## 2026-04-23 (explore mode + enrich validation fixes)
 
 - **FIX: explore seeded path uses mode='explore'** — `src/utils/explore.js` cache-miss AI call changed from `mode='single'` (with word/input_language) to `mode='explore'` (with level/word_type). Prevents `api/anthropic.js` from firing a redundant `add_seed` for words already in `word_seeds`; explore's own `fireSeedUpdate('enrich', ...)` handles enrichment. The existing `['single'].includes(mode)` allowlist in `api/anthropic.js` blocks `mode='explore'` from triggering seed-update.
