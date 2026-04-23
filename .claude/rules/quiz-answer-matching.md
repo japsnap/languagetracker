@@ -29,6 +29,17 @@ To add a new language: add an entry to `LEADING_ARTICLES` in `QuizPage.jsx`. No 
 - No partial-word stripping.
 - No synonym expansion (that is handled by `word_alternatives`, not this function).
 
+## Wrong-answer collision hint
+
+When a Hard mode typed answer is wrong, `lookupCollision(typedInput, learningLang)` runs fire-and-forget:
+
+1. Normalise: NFD diacritic strip + lowercase + trim (same as `stripDiacritics` above).
+2. Query `word_cache` (`result_word ilike prefix%`, `learning_language`, `mode='single'`), filter client-side by normalised match → returns `{ correctedWord, meaning }`.
+3. Fallback: query `word_seeds` (`word ilike prefix%`, `language`), filter client-side; then fetch meaning from `word_cache` by `result_word`.
+4. Display: `"{correctedWord} is a valid word — which means '{meaning}'"`. Falls back to `"is a valid word in this language"` when no meaning found.
+
+No AI call. No new endpoint. Quiz flow never blocked — result appears asynchronously after the answer is already recorded.
+
 ## Future fill-in-the-blanks / grammar mode
 
 **This comparison function (`answersMatch`) must NOT be used for a future fill-in-the-blanks or grammar quiz type.** In that mode, articles are part of the graded answer — stripping them would incorrectly accept wrong answers. Grammar mode will use its own comparison logic.

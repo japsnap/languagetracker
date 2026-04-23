@@ -148,7 +148,16 @@ async function lookupCollision(typedInput, learningLang) {
     );
 
     if (seedMatch) {
-      return { correctedWord: seedMatch.word, meaning: null };
+      // Try to get meaning from word_cache by result_word (enriched seeds are cached)
+      const { data: seedCacheRows } = await supabase
+        .from('word_cache')
+        .select('response')
+        .eq('result_word', seedMatch.word)
+        .eq('learning_language', learningLang)
+        .eq('mode', 'single')
+        .limit(1);
+      const meaning = seedCacheRows?.[0]?.response?.meaning || null;
+      return { correctedWord: seedMatch.word, meaning };
     }
 
     return null;
@@ -789,8 +798,8 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
                 <span className={styles.collisionText}>
                   <strong>{collisionInfo.correctedWord}</strong>
                   {collisionInfo.meaning
-                    ? ` means "${collisionInfo.meaning}" — but that's not what we're looking for here!`
-                    : ` is a valid word — but that's not what we're looking for here!`
+                    ? ` is a valid word — which means "${collisionInfo.meaning}"`
+                    : ` is a valid word in this language`
                   }
                 </span>
               </div>
