@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-04-24 (FSRS scheduling module)
+
+- **FSRS module** — installed `ts-fsrs`, created `src/utils/fsrs.js` with grade inference and scheduling helpers. Not yet wired to Quiz UI.
+  - `getFsrsInstance(desiredRetention, weights)` — returns a configured FSRS scheduler; defaults to 80% retention.
+  - `inferGradeHardMode({ isCorrect, responseTimeMs, wordLength })` — maps Hard mode outcome + response time to `again|hard|good|easy`. Thresholds scale with word length (baseline: easy <3 s, good ≤10 s at 6-char word; scales linearly for longer words).
+  - `inferGradeEasyMode(userTap)` — maps ❌/🤷/✅/🎯 tap to grade string.
+  - `gradeToRating(grade)` — converts grade string to ts-fsrs `Rating` enum.
+  - `mapFsrsStateToString(state)` / `mapStateToFsrsState(stateStr)` — bidirectional State enum ↔ string.
+  - `scheduleReview({ currentState, grade, desiredRetention, weights, now })` — core FSRS scheduling; accepts null `currentState` for first review; returns `next_state`, `due_at`, `stability`, `difficulty`, `elapsed_days`, `review_count`, `lapse_count` for DB writes.
+  - `buildReviewLogRow(...)` — builds a `review_log` insert row including `local_hour` and `day_of_week` via Intl API (no external deps).
+  - All functions have JSDoc. FSRS logic is mode-agnostic; new modes (conjugation/cloze/audio) only need entries in mode checks.
+
   ==================================================
   LAYER 1 — SYSTEM TRUTH (DO NOT OVERRIDE)
   ==================================================
