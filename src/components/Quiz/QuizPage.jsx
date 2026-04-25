@@ -1,12 +1,15 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import { buildPool, pickNext } from '../../utils/quiz';
+import { buildPool } from '../../utils/quiz';
 import { SCENES } from '../../utils/sorting';
 import { SUPPORTED_LANGUAGES } from '../../utils/preferences';
 import { supabase } from '../../utils/supabase';
+import { useAuth } from '../Auth/AuthProvider';
 import FlagButton from '../FlagButton/FlagButton';
 import SpeakerButton from '../SpeakerButton/SpeakerButton';
 import TagBar from '../TagBar/TagBar';
 import { logEvent } from '../../utils/events';
+import { scheduleReview, buildReviewLogRow, inferGradeHardMode, inferGradeEasyMode } from '../../utils/fsrs';
+import { logInterferenceEvent } from '../../utils/interference';
 import ExploreMode from './ExploreMode';
 import styles from './QuizPage.module.css';
 
@@ -20,20 +23,20 @@ const LEVEL_COLORS = {
   C1: 'var(--level-c1)',
   C2: 'var(--level-c2)',
 };
-const ANSWER_ICONS = { correct: '✅', wrong: '❌', 'not-sure': '🤷' };
+
+// 'easy' added for FSRS 🎯 Easy button (Easy mode only)
+const ANSWER_ICONS = { easy: '🎯', correct: '✅', wrong: '❌', 'not-sure': '🤷' };
 
 const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak: 0 };
 
-// Strip diacritics so "espanol" normalizes same as "español".
+// ---------------------------------------------------------------------------
+// Answer matching helpers (unchanged — see .claude/rules/quiz-answer-matching.md)
+// ---------------------------------------------------------------------------
+
 function stripDiacritics(str) {
   return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
-// Leading articles to strip before comparison, keyed by language code.
-// To add a new language: add an entry with its code and article list.
-// Languages with no articles (JA, KO, ZH, UR, HI) are omitted — no stripping needed.
-// NOTE: Future fill-in-the-blanks / grammar mode is a SEPARATE quiz type and must NOT
-// use this article-stripping logic — articles are part of the graded answer there.
 const LEADING_ARTICLES = {
   ES: ['un', 'una', 'el', 'la', 'los', 'las'],
   FR: ["l'", 'un', 'une', 'le', 'la', 'les'],
@@ -43,14 +46,11 @@ const LEADING_ARTICLES = {
   EN: ['a', 'an', 'the'],
 };
 
-// Strip a leading article from a normalised (lowercased, trimmed) string.
-// Articles are sorted longest-first so "l'" matches before "la" in French.
 function stripLeadingArticle(str, langCode) {
   const articles = LEADING_ARTICLES[langCode];
   if (!articles) return str;
   const sorted = [...articles].sort((x, y) => y.length - x.length);
   for (const art of sorted) {
-    // "l'" attaches directly; other articles are space-separated.
     if (art.endsWith("'")) {
       if (str.startsWith(art)) return str.slice(art.length).trim();
     } else {
@@ -60,7 +60,6 @@ function stripLeadingArticle(str, langCode) {
   return str;
 }
 
-// Levenshtein distance — O(m*n), fine for short vocabulary words.
 function levenshtein(a, b) {
   const m = a.length, n = b.length;
   const dp = Array.from({ length: m + 1 }, (_, i) => [i]);
@@ -75,10 +74,8 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
-// Accept if distance <= 1, except require exact match for words ≤ 3 chars.
-// Leading articles (language-specific) are stripped from both sides before comparison.
-// NOTE: Future fill-in-the-blanks / grammar mode is a SEPARATE quiz type and must NOT
-// use this comparison function — articles will be part of the graded answer there.
+// NOTE: Future fill-in-the-blanks / grammar mode must NOT use this function —
+// articles are part of the graded answer there.
 function answersMatch(input, correct, langCode = null) {
   const norm = s => stripDiacritics(s.toLowerCase().trim());
   let a = norm(input), b = norm(correct);
@@ -90,33 +87,16 @@ function answersMatch(input, correct, langCode = null) {
   return levenshtein(a, b) <= 1;
 }
 
-/**
- * Normalize a string for accent-insensitive matching:
- * strip diacritics → lowercase → trim.
- * Same logic as stripDiacritics above + lowercase/trim.
- */
 function normalizeForMatch(s) {
   return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
 }
 
-/**
- * Check whether typedInput matches any word in word_cache (result_word column)
- * or word_seeds (word column) for the given learningLang.
- * No AI call — pure Supabase queries + client-side accent normalization.
- *
- * Returns { correctedWord, meaning } if a match is found,
- * where meaning is null when only word_seeds matched (no cache row).
- * Returns null if no match.
- */
 async function lookupCollision(typedInput, learningLang) {
   try {
     const normalizedInput = normalizeForMatch(typedInput);
     if (normalizedInput.length < 2) return null;
-
-    // Use a prefix to limit DB scan; client-side filter handles accents
     const prefix = normalizedInput.slice(0, 3);
 
-    // 1. Check word_cache (result_word column, mode='single')
     const { data: cacheRows } = await supabase
       .from('word_cache')
       .select('result_word, response')
@@ -129,13 +109,10 @@ async function lookupCollision(typedInput, learningLang) {
     const cacheMatch = (cacheRows || []).find(
       row => row.result_word && normalizeForMatch(row.result_word) === normalizedInput
     );
-
     if (cacheMatch) {
-      const meaning = cacheMatch.response?.meaning || null;
-      return { correctedWord: cacheMatch.result_word, meaning };
+      return { correctedWord: cacheMatch.result_word, meaning: cacheMatch.response?.meaning || null };
     }
 
-    // 2. Fallback: check word_seeds (word column)
     const { data: seedRows } = await supabase
       .from('word_seeds')
       .select('word')
@@ -146,9 +123,7 @@ async function lookupCollision(typedInput, learningLang) {
     const seedMatch = (seedRows || []).find(
       row => row.word && normalizeForMatch(row.word) === normalizedInput
     );
-
     if (seedMatch) {
-      // Try to get meaning from word_cache by result_word (enriched seeds are cached)
       const { data: seedCacheRows } = await supabase
         .from('word_cache')
         .select('response')
@@ -156,8 +131,7 @@ async function lookupCollision(typedInput, learningLang) {
         .eq('learning_language', learningLang)
         .eq('mode', 'single')
         .limit(1);
-      const meaning = seedCacheRows?.[0]?.response?.meaning || null;
-      return { correctedWord: seedMatch.word, meaning };
+      return { correctedWord: seedMatch.word, meaning: seedCacheRows?.[0]?.response?.meaning || null };
     }
 
     return null;
@@ -166,7 +140,76 @@ async function lookupCollision(typedInput, learningLang) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// FSRS helpers (module-level — no component state, pure or ref-based)
+// ---------------------------------------------------------------------------
+
+function detectDevice() {
+  if (window.matchMedia('(display-mode: standalone)').matches) return 'pwa';
+  if (/Mobi|Android/i.test(navigator.userAgent)) return 'mobile';
+  return 'web';
+}
+
+/**
+ * FSRS-aware card selection.
+ * Priority: 0-attempt new → due learning → due relearning → remaining new →
+ *           due review → earliest not-yet-due (never blocks the user).
+ * New quiz modes (conjugation/cloze/audio) require no changes here — mode is
+ * stored in word_reviews_state and filtered by the caller.
+ */
+function pickNextFsrs(pool, stateMap, lastShownId) {
+  if (pool.length === 0) return null;
+  const candidates = pool.length > 1 ? pool.filter(w => w.id !== lastShownId) : pool;
+  if (candidates.length === 0) return pool[0];
+
+  const now = new Date();
+  const tagged = candidates.map(w => {
+    const s = stateMap.get(w.id);
+    return { word: w, state: s?.state ?? 'new', due: s?.due_at ? new Date(s.due_at) : now };
+  });
+
+  // 1. 0-attempt 'new' words (preserves existing tier-1 priority)
+  const zeroAttempt = tagged.filter(t => t.state === 'new' && t.word.total_attempts === 0);
+  if (zeroAttempt.length > 0) {
+    return zeroAttempt[Math.floor(Math.random() * zeroAttempt.length)].word;
+  }
+
+  // 2. Due 'learning' — most urgent (short FSRS step intervals)
+  const dueLearning = tagged
+    .filter(t => t.state === 'learning' && t.due <= now)
+    .sort((a, b) => a.due - b.due);
+  if (dueLearning.length > 0) return dueLearning[0].word;
+
+  // 3. Due 'relearning'
+  const dueRelearning = tagged
+    .filter(t => t.state === 'relearning' && t.due <= now)
+    .sort((a, b) => a.due - b.due);
+  if (dueRelearning.length > 0) return dueRelearning[0].word;
+
+  // 4. Remaining 'new' words (have a state row but still 'new')
+  const newWords = tagged.filter(t => t.state === 'new');
+  if (newWords.length > 0) {
+    return newWords[Math.floor(Math.random() * newWords.length)].word;
+  }
+
+  // 5. Due 'review' cards — overdue-first
+  const dueReview = tagged
+    .filter(t => t.state === 'review' && t.due <= now)
+    .sort((a, b) => a.due - b.due);
+  if (dueReview.length > 0) return dueReview[0].word;
+
+  // 6. No due cards — show earliest-due so quiz never dead-ends
+  return tagged.sort((a, b) => a.due - b.due)[0].word;
+}
+
+// ---------------------------------------------------------------------------
+// QuizPage component
+// ---------------------------------------------------------------------------
+
 export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }) {
+  const { user } = useAuth();
+
+  // ── existing quiz state ───────────────────────────────────────────────────
   const [settings, setSettings] = useState({
     levels: [],
     starredOnly: false,
@@ -179,17 +222,45 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   const [lastShownId, setLastShownId] = useState(null);
   const [session, setSession] = useState(EMPTY_SESSION);
   const [hasChanged, setHasChanged] = useState(false);
-  const [prevEntry, setPrevEntry] = useState(null); // { word, answer, hasChanged, session, typedAnswer }
+  const [prevEntry, setPrevEntry] = useState(null);
   const [canGoBack, setCanGoBack] = useState(false);
   const [quizMode, setQuizMode] = useState('easy'); // 'easy' | 'hard'
   const [exploreMode, setExploreMode] = useState(() => words.length === 0);
   const [typedAnswer, setTypedAnswer] = useState('');
   const [langFilter, setLangFilter] = useState('');
-  const [collisionInfo, setCollisionInfo] = useState(null); // { correctedWord, meaning } | null
+  const [collisionInfo, setCollisionInfo] = useState(null);
 
-  // Enter key advances to next word during revealed phase.
-  // Deferred via setTimeout(0) so the keydown that triggered the reveal
-  // (typed check via Enter) doesn't also immediately advance to the next word.
+  // ── FSRS / session refs (all reads in async fns go through refs) ──────────
+  const sessionIdRef            = useRef(null);
+  const sessionCreatedRef       = useRef(false);
+  const sessionPositionRef      = useRef(0);
+  const sessionReviewCountRef   = useRef(0);
+  const sessionCorrectCountRef  = useRef(0);
+  const sessionResponseTimesRef = useRef([]);
+  const revealedAtRef           = useRef(null); // performance.now() when question shown
+  const reviewsStateMapRef      = useRef(new Map()); // word_id → word_reviews_state row
+  const lastFsrsUndoRef         = useRef(null); // undo info for go-back
+  const inactivityTimerRef      = useRef(null);
+  const userIdRef               = useRef(null); // stable copy for cleanup/async
+  const quizModeRef             = useRef(quizMode); // stable copy for async fns
+  const fsrsPrefsRef            = useRef({
+    desiredRetention: preferences?.desired_retention ?? 0.80,
+    weights: preferences?.fsrs_weights ?? null,
+    timezone: preferences?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+  });
+
+  // ── keep refs current ────────────────────────────────────────────────────
+  useEffect(() => { userIdRef.current = user?.id ?? null; }, [user?.id]);
+  useEffect(() => { quizModeRef.current = quizMode; }, [quizMode]);
+  useEffect(() => {
+    fsrsPrefsRef.current = {
+      desiredRetention: preferences?.desired_retention ?? 0.80,
+      weights: preferences?.fsrs_weights ?? null,
+      timezone: preferences?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
+    };
+  }, [preferences]);
+
+  // ── Enter key advances on revealed phase ─────────────────────────────────
   const startOrNextRef = useRef(null);
   startOrNextRef.current = startOrNext;
   useEffect(() => {
@@ -209,7 +280,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     };
   }, [phase]);
 
-  // Set lang filter once when preferences load (preserves manual changes after that)
+  // ── Auto-set lang filter from preferences (once) ─────────────────────────
   const langFilterAutoSet = useRef(false);
   useEffect(() => {
     if (!langFilterAutoSet.current && preferences?.learning_language) {
@@ -218,21 +289,187 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     }
   }, [preferences?.learning_language]);
 
-  // Unique languages that exist in this user's vocabulary
+  // ── Computed pools ────────────────────────────────────────────────────────
   const vocabLangs = useMemo(
     () => [...new Set(words.map(w => w.word_language).filter(Boolean))].sort(),
     [words]
   );
-
-  // Pre-filter by selected language, then apply quiz settings
   const langFilteredWords = useMemo(
     () => (langFilter ? words.filter(w => w.word_language === langFilter) : words),
     [words, langFilter]
   );
-
   const pool = useMemo(() => buildPool(langFilteredWords, settings), [langFilteredWords, settings]);
 
-  // ── settings ─────────────────────────────────────────────────────────────────
+  // ── Load FSRS state map whenever pool or quiz mode changes ────────────────
+  useEffect(() => {
+    if (!user?.id || pool.length === 0) {
+      reviewsStateMapRef.current = new Map();
+      return;
+    }
+    supabase
+      .from('word_reviews_state')
+      .select('*')
+      .eq('user_id', user.id)
+      .eq('mode', quizMode)
+      .in('word_id', pool.map(w => w.id))
+      .then(({ data }) => {
+        const map = new Map();
+        (data || []).forEach(row => map.set(row.word_id, row));
+        reviewsStateMapRef.current = map;
+      })
+      .catch(() => {}); // graceful — table may not exist yet
+  }, [pool, quizMode, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Flush session on unmount ──────────────────────────────────────────────
+  useEffect(() => {
+    return () => {
+      clearTimeout(inactivityTimerRef.current);
+      _flushSession();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ---------------------------------------------------------------------------
+  // FSRS helpers (read from refs — safe to call from stale closures)
+  // ---------------------------------------------------------------------------
+
+  function _flushSession() {
+    const uid = userIdRef.current;
+    const sid = sessionIdRef.current;
+    if (!uid || !sid) return;
+    const times = sessionResponseTimesRef.current;
+    const avgMs = times.length > 0
+      ? Math.round(times.reduce((a, b) => a + b, 0) / times.length)
+      : null;
+    supabase.from('sessions').update({
+      ended_at: new Date().toISOString(),
+      review_count: sessionReviewCountRef.current,
+      correct_count: sessionCorrectCountRef.current,
+      avg_response_ms: avgMs,
+    }).eq('id', sid).catch(() => {});
+  }
+
+  function _resetInactivityTimer() {
+    clearTimeout(inactivityTimerRef.current);
+    inactivityTimerRef.current = setTimeout(_flushSession, 10 * 60 * 1000);
+  }
+
+  async function _createSession() {
+    if (sessionCreatedRef.current || !userIdRef.current) return;
+    sessionCreatedRef.current = true;
+    try {
+      const { data } = await supabase
+        .from('sessions')
+        .insert({
+          user_id: userIdRef.current,
+          mode: quizModeRef.current,
+          device: detectDevice(),
+          started_at: new Date().toISOString(),
+        })
+        .select('id')
+        .single();
+      if (data?.id) sessionIdRef.current = data.id;
+    } catch { /* graceful — sessions table may not exist yet */ }
+  }
+
+  // Maps answer button type → FSRS grade string.
+  // Easy mode: tap maps to FSRS grade via inferGradeEasyMode.
+  // Hard mode: isCorrect + responseTimeMs → inferGradeHardMode (tap is irrelevant).
+  // New modes: add their own grade inference in a parallel elif branch here.
+  function _answerTypeToGrade(type, isHardMode, responseTimeMs, wordLength) {
+    if (isHardMode) {
+      return inferGradeHardMode({ isCorrect: type === 'correct', responseTimeMs, wordLength });
+    }
+    const tapToEmoji = { easy: '🎯', correct: '✅', 'not-sure': '🤷', wrong: '❌' };
+    return inferGradeEasyMode(tapToEmoji[type] ?? '✅');
+  }
+
+  // Core FSRS write: updates word_reviews_state, inserts review_log row.
+  // All state read from refs — safe to call from useCallback closures.
+  async function _writeFsrsResult(word, type, responseTimeMs) {
+    const uid = userIdRef.current;
+    if (!uid) return;
+
+    const mode = quizModeRef.current;
+    const isHardMode = mode === 'hard';
+    const isCorrect = type === 'correct' || type === 'easy';
+    const { desiredRetention, weights, timezone } = fsrsPrefsRef.current;
+    const grade = _answerTypeToGrade(type, isHardMode, responseTimeMs, word.word.length);
+    const currentState = reviewsStateMapRef.current.get(word.id) ?? null;
+
+    let stateAfter;
+    try {
+      stateAfter = scheduleReview({ currentState, grade, desiredRetention, weights });
+    } catch { return; }
+
+    // Upsert word_reviews_state
+    let updatedRow = null;
+    try {
+      const { data } = await supabase
+        .from('word_reviews_state')
+        .upsert({
+          user_id: uid,
+          word_id: word.id,
+          mode,
+          state: stateAfter.next_state,
+          stability: stateAfter.stability,
+          difficulty: stateAfter.difficulty,
+          due_at: stateAfter.due_at,
+          last_review_at: new Date().toISOString(),
+          review_count: stateAfter.review_count,
+          lapse_count: stateAfter.lapse_count,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'user_id,word_id,mode' })
+        .select()
+        .single();
+      updatedRow = data;
+    } catch { /* graceful — word_reviews_state table may not exist yet */ }
+
+    if (updatedRow) reviewsStateMapRef.current.set(word.id, updatedRow);
+
+    // Insert review_log row
+    let reviewLogId = null;
+    try {
+      sessionPositionRef.current++;
+      const logRow = buildReviewLogRow({
+        userId: uid,
+        wordId: word.id,
+        mode,
+        sessionId: sessionIdRef.current,
+        sessionPosition: sessionPositionRef.current,
+        grade,
+        responseTimeMs,
+        isCorrect,
+        stateBefore: currentState,
+        stateAfter,
+        device: detectDevice(),
+        inputMethod: isHardMode ? 'typed' : 'tap',
+        userTimezone: timezone,
+      });
+      const { data } = await supabase
+        .from('review_log')
+        .insert(logRow)
+        .select('id')
+        .single();
+      reviewLogId = data?.id ?? null;
+    } catch { /* graceful — review_log table may not exist yet */ }
+
+    // Store undo info so go-back can revert this write
+    lastFsrsUndoRef.current = {
+      wordId: word.id,
+      mode,
+      prevState: currentState,
+      reviewLogId,
+    };
+
+    // Update session counters
+    sessionReviewCountRef.current++;
+    if (isCorrect) sessionCorrectCountRef.current++;
+    if (responseTimeMs > 0) sessionResponseTimesRef.current.push(responseTimeMs);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Settings
+  // ---------------------------------------------------------------------------
 
   function toggleLevel(level) {
     setSettings(s => ({
@@ -247,18 +484,23 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     setSettings(s => ({ ...s, [key]: !s[key] }));
   }
 
-  // ── quiz flow ────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // Quiz flow
+  // ---------------------------------------------------------------------------
 
   function startOrNext() {
-    const next = pickNext(pool, lastShownId);
+    const next = pickNextFsrs(pool, reviewsStateMapRef.current, lastShownId);
     if (!next) {
       setPhase('done');
       return;
     }
-    // Save current card as "previous" before advancing
     if (current !== null) {
       setPrevEntry({ word: current, answer: lastAnswer, hasChanged, session, typedAnswer });
       setCanGoBack(true);
+    }
+    // Create a session row on the first card of each quiz session
+    if (!sessionCreatedRef.current) {
+      _createSession();
     }
     setCurrent(next);
     setLastShownId(next.id);
@@ -266,14 +508,16 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     setHasChanged(false);
     setTypedAnswer('');
     setCollisionInfo(null);
+    lastFsrsUndoRef.current = null; // clear stale undo from previous card
+    revealedAtRef.current = performance.now(); // start response-time window
     setPhase('question');
   }
 
   function handleGoBack() {
     if (!prevEntry || !canGoBack) return;
 
-    // If current word was already answered, undo its DB changes
     if (phase === 'revealed' && current && lastAnswer) {
+      // Undo legacy vocab changes (existing behaviour)
       onUpdateWord(current.id, {
         total_attempts:  current.total_attempts,
         correct_streak:  current.correct_streak,
@@ -281,9 +525,42 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
         error_counter:   current.error_counter,
         last_reviewed:   current.last_reviewed,
       });
+
+      // Undo FSRS writes — delete review_log row and revert word_reviews_state
+      if (lastFsrsUndoRef.current) {
+        const { wordId, mode, prevState, reviewLogId } = lastFsrsUndoRef.current;
+        const uid = userIdRef.current;
+        if (uid) {
+          if (reviewLogId) {
+            supabase.from('review_log').delete().eq('id', reviewLogId).catch(() => {});
+          }
+          if (prevState) {
+            supabase.from('word_reviews_state')
+              .upsert({ ...prevState, updated_at: new Date().toISOString() }, { onConflict: 'user_id,word_id,mode' })
+              .catch(() => {});
+            reviewsStateMapRef.current.set(wordId, prevState);
+          } else {
+            // Word was new — remove the state row entirely
+            supabase.from('word_reviews_state')
+              .delete()
+              .eq('user_id', uid).eq('word_id', wordId).eq('mode', mode)
+              .catch(() => {});
+            reviewsStateMapRef.current.delete(wordId);
+          }
+          // Revert session counters
+          sessionReviewCountRef.current = Math.max(0, sessionReviewCountRef.current - 1);
+          if (lastAnswer === 'correct' || lastAnswer === 'easy') {
+            sessionCorrectCountRef.current = Math.max(0, sessionCorrectCountRef.current - 1);
+          }
+          sessionPositionRef.current = Math.max(0, sessionPositionRef.current - 1);
+          if (sessionResponseTimesRef.current.length > 0) {
+            sessionResponseTimesRef.current = sessionResponseTimesRef.current.slice(0, -1);
+          }
+        }
+        lastFsrsUndoRef.current = null;
+      }
     }
 
-    // Restore session to state before current word (covers both phases)
     setSession(prevEntry.session);
     setCurrent(prevEntry.word);
     setLastAnswer(prevEntry.answer);
@@ -293,7 +570,10 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     setCanGoBack(false);
   }
 
-  // Apply answer changes to a word starting from its `base` snapshot.
+  // Compute legacy vocabulary field changes from a quiz answer.
+  // 'easy' treated same as 'correct' for streak purposes.
+  // FSRS note: auto-mastered on streak ≥ 5 removed — FSRS state='review' with
+  // high stability will replace this concept (v1.5 deprecation path).
   function computeChanges(base, type) {
     const now = new Date().toISOString();
     const changes = {
@@ -303,10 +583,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
       correct_streak: base.correct_streak,
       mastered: base.mastered,
     };
-    if (type === 'correct') {
-      const newStreak = base.correct_streak + 1;
-      changes.correct_streak = newStreak;
-      if (newStreak >= 5) changes.mastered = true;
+    if (type === 'correct' || type === 'easy') {
+      changes.correct_streak = base.correct_streak + 1;
     } else if (type === 'wrong') {
       changes.error_counter = base.error_counter + 1;
       changes.correct_streak = 0;
@@ -317,16 +595,40 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     return changes;
   }
 
+  // handleAnswer is the single entry point for all answer submissions.
+  // Response time is computed from revealedAtRef (set in startOrNext).
   const handleAnswer = useCallback(
     (type) => {
       if (!current) return;
-      onUpdateWord(current.id, computeChanges(current, type));
-      logEvent('quiz_answer', { word_id: current.id, word: current.word, answer: type, quiz_mode: quizMode });
 
+      // Capture response time immediately — revealedAt was set when question was shown
+      const responseTimeMs = revealedAtRef.current
+        ? Math.round(performance.now() - revealedAtRef.current)
+        : 0;
+      revealedAtRef.current = null;
+
+      // Legacy vocab fields (backward compat — Stats/Review still read these)
+      onUpdateWord(current.id, computeChanges(current, type));
+
+      // Preserve existing event logging (do not remove)
+      logEvent('quiz_answer', {
+        word_id: current.id,
+        word: current.word,
+        answer: type,
+        quiz_mode: quizMode,
+      });
+
+      // FSRS write — fire-and-forget; graceful if tables don't exist yet
+      _writeFsrsResult(current, type, responseTimeMs).catch(() => {});
+
+      // Reset 10-min inactivity flush
+      _resetInactivityTimer();
+
+      const isCorrect = type === 'correct' || type === 'easy';
       setSession(prev => {
-        const newStreak = type === 'correct' ? prev.streak + 1 : 0;
+        const newStreak = isCorrect ? prev.streak + 1 : 0;
         return {
-          correct:    prev.correct   + (type === 'correct'   ? 1 : 0),
+          correct:    prev.correct   + (isCorrect           ? 1 : 0),
           wrong:      prev.wrong     + (type === 'wrong'     ? 1 : 0),
           notSure:    prev.notSure   + (type === 'not-sure'  ? 1 : 0),
           streak:     newStreak,
@@ -336,43 +638,55 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
       setLastAnswer(type);
       setPhase('revealed');
     },
-    [current, onUpdateWord, quizMode]
+    [current, onUpdateWord, quizMode] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  // Hard mode: compare typed input against the word and any stored alternatives.
-  // On wrong answer: fire an async collision check against word_cache + word_seeds.
+  // Hard mode typed-answer check. Fires interference log on wrong answer (v1 stub).
   function handleCheckAnswer(typed) {
     if (!typed.trim() || !current) return;
     const lang = current.word_language || preferences?.learning_language || null;
-    const isCorrect = answersMatch(typed, current.word, lang) ||
+    const isCorrect =
+      answersMatch(typed, current.word, lang) ||
       (Array.isArray(current.word_alternatives) &&
         current.word_alternatives.some(alt => answersMatch(typed, alt, lang)));
+
     if (!isCorrect) {
       const lookupLang = current.word_language || preferences?.learning_language || 'es';
       setCollisionInfo(null);
       lookupCollision(typed, lookupLang).then(setCollisionInfo);
+
+      // Log interference event — fire-and-forget stub (v1.5 adds matching logic)
+      if (userIdRef.current) {
+        logInterferenceEvent({
+          userId: userIdRef.current,
+          targetWordId: current.id,
+          typedText: typed,
+          sessionId: sessionIdRef.current,
+        }).catch(() => {});
+      }
     }
+
     handleAnswer(isCorrect ? 'correct' : 'wrong');
   }
 
-  // Change answer: undo first response, apply new one.
+  // Change-answer undoes legacy fields only (FSRS write already committed with
+  // original grade — acceptable for v1; FSRS re-grade on change is v1.5).
   const handleChangeAnswer = useCallback(
     (newType) => {
       if (!current || hasChanged) return;
-
       onUpdateWord(current.id, computeChanges(current, newType));
-
       setSession(prev => {
         const old = lastAnswer;
+        const oldCorrect = old === 'correct' || old === 'easy';
+        const newCorrect = newType === 'correct' || newType === 'easy';
         let newStreak = prev.streak;
-        if (old === 'correct' && newType !== 'correct') newStreak = 0;
-        else if (old !== 'correct' && newType === 'correct') newStreak = 1;
-
+        if (oldCorrect && !newCorrect) newStreak = 0;
+        else if (!oldCorrect && newCorrect) newStreak = 1;
         return {
           ...prev,
-          correct:  prev.correct  - (old === 'correct'   ? 1 : 0) + (newType === 'correct'   ? 1 : 0),
-          wrong:    prev.wrong    - (old === 'wrong'      ? 1 : 0) + (newType === 'wrong'      ? 1 : 0),
-          notSure:  prev.notSure  - (old === 'not-sure'  ? 1 : 0) + (newType === 'not-sure'   ? 1 : 0),
+          correct:  prev.correct  - (oldCorrect           ? 1 : 0) + (newCorrect            ? 1 : 0),
+          wrong:    prev.wrong    - (old === 'wrong'       ? 1 : 0) + (newType === 'wrong'   ? 1 : 0),
+          notSure:  prev.notSure  - (old === 'not-sure'    ? 1 : 0) + (newType === 'not-sure'? 1 : 0),
           streak:   newStreak,
         };
       });
@@ -393,16 +707,25 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     setCanGoBack(false);
     setTypedAnswer('');
     setCollisionInfo(null);
+    // Reset FSRS session state so next "Start Quiz" creates a fresh session
+    sessionCreatedRef.current = false;
+    sessionIdRef.current = null;
+    sessionPositionRef.current = 0;
+    sessionReviewCountRef.current = 0;
+    sessionCorrectCountRef.current = 0;
+    sessionResponseTimesRef.current = [];
+    lastFsrsUndoRef.current = null;
+    clearTimeout(inactivityTimerRef.current);
   }
 
   const reviewed = session.correct + session.wrong + session.notSure;
-
-  // Flag for the current card's language
   const currentLangFlag = current?.word_language
     ? SUPPORTED_LANGUAGES.find(l => l.code === current.word_language)?.flag
     : null;
 
-  // ── render ───────────────────────────────────────────────────────────────────
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
 
   return (
     <div className={styles.page}>
@@ -432,8 +755,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
           </button>
         </div>
 
-        {/* Quiz-specific settings — hidden in explore mode (ExploreMode has its own level row) */}
-        {/* Language filter — only shown if vocabulary has words in multiple languages */}
+        {/* Language filter — only when vocabulary spans multiple languages */}
         {!exploreMode && vocabLangs.length > 1 && (
           <div className={styles.settingsGroup}>
             <span className={styles.settingsLabel}>Language:</span>
@@ -528,76 +850,60 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
         )}
       </div>
 
-      {/* Session stats — quiz only */}
+      {/* Session stats strip */}
       {!exploreMode && phase !== 'idle' && (
         <div className={styles.statsStrip}>
-          <span className={styles.statItem}>
-            Reviewed: <strong>{reviewed}</strong>
-          </span>
-          <span className={`${styles.statItem} ${styles.statCorrect}`}>
-            ✅ <strong>{session.correct}</strong>
-          </span>
-          <span className={`${styles.statItem} ${styles.statWrong}`}>
-            ❌ <strong>{session.wrong}</strong>
-          </span>
-          <span className={`${styles.statItem} ${styles.statNotSure}`}>
-            🤷 <strong>{session.notSure}</strong>
-          </span>
-          <span className={styles.statItem}>
-            Streak: <strong>{session.streak}</strong>
-          </span>
+          <span className={styles.statItem}>Reviewed: <strong>{reviewed}</strong></span>
+          <span className={`${styles.statItem} ${styles.statCorrect}`}>✅ <strong>{session.correct}</strong></span>
+          <span className={`${styles.statItem} ${styles.statWrong}`}>❌ <strong>{session.wrong}</strong></span>
+          <span className={`${styles.statItem} ${styles.statNotSure}`}>🤷 <strong>{session.notSure}</strong></span>
+          <span className={styles.statItem}>Streak: <strong>{session.streak}</strong></span>
         </div>
       )}
 
-      {/* Explore mode fills remaining space (has its own layout) */}
+      {/* Explore mode */}
       {exploreMode && (
-        <ExploreMode
-          preferences={preferences}
-          words={words}
-          onAddWord={onAddWord}
-        />
+        <ExploreMode preferences={preferences} words={words} onAddWord={onAddWord} />
       )}
 
       {/* Quiz mode main area */}
       {!exploreMode && (
-      <div className={styles.main}>
-        {phase === 'idle' && (
-          <IdleScreen pool={pool} onStart={startOrNext} />
-        )}
+        <div className={styles.main}>
+          {phase === 'idle' && <IdleScreen pool={pool} onStart={startOrNext} />}
 
-        {(phase === 'question' || phase === 'revealed') && current && (
-          <QuizCard
-            word={current}
-            phase={phase}
-            lastAnswer={lastAnswer}
-            hasChanged={hasChanged}
-            langFlag={currentLangFlag}
-            canGoBack={canGoBack}
-            quizMode={quizMode}
-            typedAnswer={typedAnswer}
-            onTypedAnswerChange={setTypedAnswer}
-            onCheckAnswer={handleCheckAnswer}
-            onAnswer={handleAnswer}
-            onChangeAnswer={handleChangeAnswer}
-            onGoBack={handleGoBack}
-            onNext={startOrNext}
-            onUpdateWord={onUpdateWord}
-            collisionInfo={collisionInfo}
-            learningLang={preferences?.learning_language || 'es'}
-            primaryLang={preferences?.primary_language || 'en'}
-          />
-        )}
+          {(phase === 'question' || phase === 'revealed') && current && (
+            <QuizCard
+              word={current}
+              phase={phase}
+              lastAnswer={lastAnswer}
+              hasChanged={hasChanged}
+              langFlag={currentLangFlag}
+              canGoBack={canGoBack}
+              quizMode={quizMode}
+              typedAnswer={typedAnswer}
+              onTypedAnswerChange={setTypedAnswer}
+              onCheckAnswer={handleCheckAnswer}
+              onAnswer={handleAnswer}
+              onChangeAnswer={handleChangeAnswer}
+              onGoBack={handleGoBack}
+              onNext={startOrNext}
+              onUpdateWord={onUpdateWord}
+              collisionInfo={collisionInfo}
+              learningLang={preferences?.learning_language || 'es'}
+              primaryLang={preferences?.primary_language || 'en'}
+            />
+          )}
 
-        {phase === 'done' && (
-          <DoneScreen session={session} reviewed={reviewed} onRestart={restart} />
-        )}
-      </div>
+          {phase === 'done' && <DoneScreen session={session} reviewed={reviewed} onRestart={restart} />}
+        </div>
       )}
     </div>
   );
 }
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
 function IdleScreen({ pool, onStart }) {
   return (
@@ -612,21 +918,23 @@ function IdleScreen({ pool, onStart }) {
           <p className={styles.idleReady}>
             <strong>{pool.length}</strong> word{pool.length !== 1 ? 's' : ''} ready
           </p>
-          <button className={styles.startBtn} onClick={onStart}>
-            Start Quiz
-          </button>
+          <button className={styles.startBtn} onClick={onStart}>Start Quiz</button>
         </>
       )}
     </div>
   );
 }
 
-const ALL_ANSWER_TYPES = ['correct', 'wrong', 'not-sure'];
+// All answer types including 'easy' (🎯). Change-answer shows all but the current one.
+const ALL_ANSWER_TYPES = ['easy', 'correct', 'wrong', 'not-sure'];
 
-function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode, typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer, onGoBack, onNext, onUpdateWord, collisionInfo, learningLang, primaryLang }) {
+function QuizCard({
+  word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode,
+  typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer,
+  onGoBack, onNext, onUpdateWord, collisionInfo, learningLang, primaryLang,
+}) {
   const inputRef = useRef(null);
 
-  // Local tag + mastered state — reset when word changes so stale snapshot doesn't persist
   const [localTags,     setLocalTags]     = useState(word.tags ?? []);
   const [localMastered, setLocalMastered] = useState(word.mastered ?? false);
   useEffect(() => {
@@ -644,7 +952,6 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
     onUpdateWord(word.id, { mastered: true });
   }
 
-  // Auto-focus the text input whenever a reverse-mode question appears
   useEffect(() => {
     if (quizMode === 'hard' && phase === 'question' && inputRef.current) {
       inputRef.current.focus();
@@ -656,7 +963,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
     phase === 'revealed' && lastAnswer ? styles[`card_${lastAnswer.replace('-', '_')}`] : '',
   ].filter(Boolean).join(' ');
 
-  const isHard = quizMode === 'hard'; // hard = typed production; easy = self-assessed recognition
+  const isHard = quizMode === 'hard';
   const learningLangObj = SUPPORTED_LANGUAGES.find(l => l.code === word.word_language);
 
   return (
@@ -666,7 +973,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
       )}
       <div className={cardClass}>
 
-        {/* ── Header: pos / level / lang badge / answer icon ── */}
+        {/* Header: pos / level / lang badge / answer icon */}
         <div className={styles.cardHeader}>
           <div className={styles.cardHeaderLeft}>
             <span className={styles.cardPos}>{word.part_of_speech}</span>
@@ -686,7 +993,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
           )}
         </div>
 
-        {/* ── Normal mode: word is the question ── */}
+        {/* Easy mode: word is the question */}
         {!isHard && (
           <div className={styles.cardWordWrap}>
             <div className={styles.cardWordRow}>
@@ -702,7 +1009,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
           </div>
         )}
 
-        {/* ── Reverse mode question: meaning is the prompt ── */}
+        {/* Hard mode question: meaning is the prompt */}
         {isHard && phase === 'question' && (
           <div className={styles.reverseMeaningWrap}>
             <div className={styles.reverseMeaning}>{word.meaning}</div>
@@ -710,7 +1017,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
           </div>
         )}
 
-        {/* ── Reverse mode revealed: show the correct word ── */}
+        {/* Hard mode revealed: show the correct word */}
         {isHard && phase === 'revealed' && (
           <div className={styles.cardWordWrap}>
             <div className={styles.cardWordRow}>
@@ -726,16 +1033,17 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
           </div>
         )}
 
-        {/* ── Normal mode answer buttons ── */}
+        {/* Easy mode answer buttons — 🎯 Easy added as the top grade option */}
         {!isHard && phase === 'question' && (
           <div className={styles.answerButtons}>
+            <button className={`${styles.answerBtn} ${styles.easy}`}    onClick={() => onAnswer('easy')}>🎯 Easy</button>
             <button className={`${styles.answerBtn} ${styles.correct}`} onClick={() => onAnswer('correct')}>✅ I knew it</button>
-            <button className={`${styles.answerBtn} ${styles.wrong}`} onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
+            <button className={`${styles.answerBtn} ${styles.wrong}`}   onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
             <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>🤷 Lucky guess</button>
           </div>
         )}
 
-        {/* ── Reverse mode input + self-assess ── */}
+        {/* Hard mode: typed input + self-assess (🎯 Easy added to self-assess row) */}
         {isHard && phase === 'question' && (
           <div className={styles.reverseInputSection}>
             <div className={styles.reverseInputRow}>
@@ -764,25 +1072,26 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
             <div className={styles.selfAssessSection}>
               <span className={styles.selfAssessLabel}>Or self-assess:</span>
               <div className={styles.answerButtons}>
+                <button className={`${styles.answerBtn} ${styles.easy}`}    onClick={() => onAnswer('easy')}>🎯 Easy</button>
                 <button className={`${styles.answerBtn} ${styles.correct}`} onClick={() => onAnswer('correct')}>✅ I knew it</button>
-                <button className={`${styles.answerBtn} ${styles.wrong}`} onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
+                <button className={`${styles.answerBtn} ${styles.wrong}`}   onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
                 <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>🤷 Lucky guess</button>
               </div>
             </div>
           </div>
         )}
 
-        {/* ── Revealed section (both modes) ── */}
+        {/* Revealed section (both modes) */}
         {phase === 'revealed' && (
           <>
-            {/* Answer comparison — reverse mode, when user typed rather than self-assessed */}
+            {/* Answer comparison — Hard mode, typed answer */}
             {isHard && typedAnswer && (
               <div className={styles.answerComparison}>
-                <div className={`${styles.compCell} ${lastAnswer === 'correct' ? styles.compCellCorrect : styles.compCellWrong}`}>
+                <div className={`${styles.compCell} ${lastAnswer === 'correct' || lastAnswer === 'easy' ? styles.compCellCorrect : styles.compCellWrong}`}>
                   <span className={styles.compCellLabel}>Your answer</span>
                   <span className={styles.compCellValue} translate="no">{typedAnswer}</span>
                 </div>
-                {lastAnswer !== 'correct' && (
+                {lastAnswer !== 'correct' && lastAnswer !== 'easy' && (
                   <div className={`${styles.compCell} ${styles.compCellCorrect}`}>
                     <span className={styles.compCellLabel}>Correct</span>
                     <span className={styles.compCellValue} translate="no">{word.word}</span>
@@ -791,7 +1100,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
               </div>
             )}
 
-            {/* Collision hint — shown when wrong typed answer matches a different valid word */}
+            {/* Collision hint */}
             {isHard && typedAnswer && lastAnswer === 'wrong' && collisionInfo && (
               <div className={styles.collisionCard} translate="no">
                 <span className={styles.collisionIcon}>💡</span>
@@ -808,9 +1117,9 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
             <div className={styles.revealDivider} />
             <div className={styles.revealGrid}>
               <RevealField label="Meaning" value={word.meaning} highlight />
-              {word.example && <RevealField label="Example" value={word.example} italic />}
-              {word.related_words && <RevealField label="Related words" value={word.related_words} />}
-              {word.other_useful_notes && <RevealField label="Notes" value={word.other_useful_notes} />}
+              {word.example          && <RevealField label="Example"       value={word.example}            italic />}
+              {word.related_words    && <RevealField label="Related words" value={word.related_words} />}
+              {word.other_useful_notes && <RevealField label="Notes"       value={word.other_useful_notes} />}
             </div>
 
             <div className={styles.revealActions}>
@@ -824,7 +1133,12 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
                       key={type}
                       className={`${styles.changeBtn} ${styles[`changeBtnType_${type.replace('-', '_')}`]}`}
                       onClick={() => onChangeAnswer(type)}
-                      title={type === 'correct' ? 'I knew it' : type === 'wrong' ? "I didn't know it" : 'Lucky guess'}
+                      title={
+                        type === 'easy'     ? 'Easy — I got it instantly'  :
+                        type === 'correct'  ? 'I knew it'                   :
+                        type === 'wrong'    ? "I didn't know it"            :
+                        'Lucky guess'
+                      }
                     >
                       {ANSWER_ICONS[type]}
                     </button>
@@ -832,7 +1146,7 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
                 </div>
               )}
 
-              {/* Mastered button */}
+              {/* Mastered button — manual only; FSRS state='review' will replace auto-mastering */}
               <div className={styles.flagRow}>
                 {localMastered ? (
                   <span className={styles.masteredConfirm}>Mastered ✓</span>
@@ -843,7 +1157,6 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
                 )}
               </div>
 
-              {/* Word tags */}
               <div className={styles.flagRow}>
                 <TagBar tags={localTags} onChange={handleTagChange} size="sm" />
               </div>
@@ -854,7 +1167,6 @@ function QuizCard({ word, phase, lastAnswer, hasChanged, langFlag, canGoBack, qu
             </div>
           </>
         )}
-
       </div>
     </div>
   );
@@ -867,7 +1179,7 @@ function RevealField({ label, value, highlight, italic }) {
       <span className={[
         styles.revealValue,
         highlight ? styles.revealHighlight : '',
-        italic   ? styles.revealItalic   : '',
+        italic    ? styles.revealItalic   : '',
       ].filter(Boolean).join(' ')}>
         {value}
       </span>

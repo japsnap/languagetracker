@@ -1,5 +1,133 @@
 # Changelog
 
+## 2026-04-25 (FSRS wired into Quiz UI)
+
+### Required DB migrations (run once in Supabase SQL Editor)
+
+```sql
+-- FSRS per-card state (source of truth for scheduling)
+CREATE TABLE IF NOT EXISTS word_reviews_state (
+  id             uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  word_id        uuid        NOT NULL REFERENCES vocabulary(id) ON DELETE CASCADE,
+  mode           text        NOT NULL,
+  state          text        NOT NULL DEFAULT 'new',
+  stability      float,
+  difficulty     float,
+  due_at         timestamptz NOT NULL DEFAULT now(),
+  last_review_at timestamptz,
+  review_count   int         NOT NULL DEFAULT 0,
+  lapse_count    int         NOT NULL DEFAULT 0,
+  updated_at     timestamptz DEFAULT now(),
+  UNIQUE (user_id, word_id, mode)
+);
+ALTER TABLE word_reviews_state ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own reviews_state" ON word_reviews_state FOR ALL USING (auth.uid() = user_id);
+
+-- Per-review audit log (analytics + future retention modeling)
+CREATE TABLE IF NOT EXISTS review_log (
+  id                   uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id              uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  word_id              uuid        NOT NULL REFERENCES vocabulary(id) ON DELETE CASCADE,
+  mode                 text        NOT NULL,
+  session_id           uuid,
+  session_position     int,
+  grade                text,
+  response_time_ms     int,
+  is_correct           boolean,
+  state_before         text,
+  stability_before     float,
+  difficulty_before    float,
+  due_before           timestamptz,
+  state_after          text,
+  stability_after      float,
+  difficulty_after     float,
+  due_after            timestamptz,
+  device               text,
+  input_method         text,
+  interference_word_id uuid,
+  local_hour           int,
+  day_of_week          text,
+  reviewed_at          timestamptz DEFAULT now()
+);
+ALTER TABLE review_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own review_log" ON review_log FOR ALL USING (auth.uid() = user_id);
+
+-- Quiz session tracking
+CREATE TABLE IF NOT EXISTS sessions (
+  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  mode            text,
+  device          text,
+  started_at      timestamptz DEFAULT now(),
+  ended_at        timestamptz,
+  review_count    int         DEFAULT 0,
+  correct_count   int         DEFAULT 0,
+  avg_response_ms int
+);
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own sessions" ON sessions FOR ALL USING (auth.uid() = user_id);
+
+-- Interference event log (v1 stub — matching logic added in v1.5)
+CREATE TABLE IF NOT EXISTS interference_events (
+  id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id           uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  target_word_id    uuid        NOT NULL REFERENCES vocabulary(id) ON DELETE CASCADE,
+  typed_text        text,
+  matched_word      text,
+  interference_type text        DEFAULT 'unknown',
+  session_id        uuid,
+  created_at        timestamptz DEFAULT now()
+);
+ALTER TABLE interference_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own interference_events" ON interference_events FOR ALL USING (auth.uid() = user_id);
+
+-- FSRS preferences on user_preferences (graceful defaults applied if columns absent)
+ALTER TABLE user_preferences
+  ADD COLUMN IF NOT EXISTS timezone         text,
+  ADD COLUMN IF NOT EXISTS desired_retention float DEFAULT 0.80,
+  ADD COLUMN IF NOT EXISTS fsrs_weights      jsonb,
+  ADD COLUMN IF NOT EXISTS daily_review_goal int   DEFAULT 20;
+```
+
+### What changed
+
+- **FSRS card selection** (`pickNextFsrs` in `QuizPage.jsx`) replaces `pickNext` from `utils/quiz.js` for ordering decisions. Priority: 0-attempt new words → due learning → due relearning → remaining new → due review → earliest not-yet-due. The existing `buildPool` filter (level/starred/mastered/scene/language) is unchanged. New quiz modes (conjugation/cloze/audio/reverse) need no changes to this function — mode is stored in `word_reviews_state` and filtered by the caller.
+
+- **Session management** — On the first card of each quiz session, a row is inserted into `sessions`. `session_id` is stored in a ref and attached to every `review_log` row. On component unmount or 10 minutes of inactivity, the session row is updated with `ended_at`, `review_count`, `correct_count`, `avg_response_ms`. `restart()` resets all session refs so "Start over" creates a fresh session. Device is detected via `matchMedia('display-mode: standalone')` (PWA) or UA string.
+
+- **FSRS writes on every answer** (`_writeFsrsResult`) — upserts `word_reviews_state` (state, stability, difficulty, due_at, review_count, lapse_count) and inserts a `review_log` row with full before/after state snapshot, response time, grade, device, input method, local hour, and day of week. All DB ops are fire-and-forget with try/catch — the quiz flow is never blocked and the app degrades gracefully if tables don't exist yet.
+
+- **Go-back FSRS undo** — `handleGoBack` now also reverts the FSRS write: deletes the `review_log` row and either restores the previous `word_reviews_state` row (upsert) or deletes it if the word was new. Session counters (review_count, correct_count, session_position) are decremented to match. Existing legacy field undo is preserved.
+
+- **Response time capture** — `revealedAtRef` is set to `performance.now()` in `startOrNext` when the question phase begins. `handleAnswer` reads and clears it to compute `responseTimeMs`. Note: Hard mode response time starts at question display, not input focus — flagged for v1.5 improvement.
+
+- **Grade inference** — Easy mode: `inferGradeEasyMode` maps tap type (easy/correct/not-sure/wrong) to FSRS grade (easy/good/hard/again). Hard mode: `inferGradeHardMode` infers grade from `isCorrect` + `responseTimeMs` + `wordLength` regardless of tap; self-assess buttons in Hard mode still send the typed-answer outcome.
+
+- **🎯 Easy button** — Added to both Easy mode and Hard mode self-assess rows, before ✅ I knew it. Maps to FSRS grade 'easy' and counts as 'correct' for legacy streak. Card border shows `card_easy` (dark green) on reveal.
+
+- **Interference event logging** (`src/utils/interference.js`) — New fire-and-forget helper. On Hard mode wrong answer, inserts into `interference_events` with `interference_type='unknown'` and `matched_word=null`. v1.5 will add matching logic (checking typed text against user vocab + similarity cache).
+
+- **`computeChanges` — stop auto-mastering** — Removed `if (newStreak >= 5) changes.mastered = true`. FSRS `state='review'` with high stability will replace this concept. The `mastered` field remains in the DB; the manual "Mark as mastered" button is unchanged.
+
+- **`handleChangeAnswer`** — Updated to treat `'easy'` as correct for session counter arithmetic. FSRS is not re-graded on change-answer (v1 acceptable; v1.5 to add re-grade).
+
+### Legacy behavior preserved (do not remove)
+
+- `total_attempts`, `error_counter`, `correct_streak`, `last_reviewed` are still written on every answer via `onUpdateWord`. Stats page, Review page, and CSV export all read these fields.
+- `user_events` quiz_answer log is preserved unchanged alongside the new `review_log` writes.
+- `buildPool` filter logic (mastered/starred/level/scene) is unchanged.
+- `word_language` filter chips unchanged.
+- Go-back legacy field undo unchanged.
+
+### v1.5 flags
+
+- `quiz.js` `wordWeight()` reads `last_reviewed` for weighted selection — replace with `word_reviews_state.due_at` once FSRS state is the source of truth for all users.
+- Hard mode response time should start at input focus, not question display — add `onInputFocused` callback from QuizCard.
+- `handleChangeAnswer` should re-grade the FSRS state with the new answer type.
+- FSRS `desired_retention` / `fsrs_weights` / `timezone` settings UI needed in SettingsPage.
+- `daily_review_goal` tracking not yet implemented.
+
 ## 2026-04-24 (FSRS scheduling module)
 
 - **FSRS module** — installed `ts-fsrs`, created `src/utils/fsrs.js` with grade inference and scheduling helpers. Not yet wired to Quiz UI.

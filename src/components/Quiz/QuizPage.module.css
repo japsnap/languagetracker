@@ -175,6 +175,7 @@
   transition: border-color 0.2s;
 }
 
+.card_easy      { border-color: #43a047; }
 .card_correct   { border-color: var(--olive); }
 .card_wrong     { border-color: var(--terracotta); }
 .card_not_sure  { border-color: var(--gold); }
@@ -286,10 +287,12 @@
   white-space: nowrap;
 }
 
-.answerBtn.correct  { background: var(--olive-bg);      border-color: var(--olive);      color: var(--olive); }
+.answerBtn.easy     { background: #e8f5e9;               border-color: #43a047;            color: #2e7d32; }
+.answerBtn.correct  { background: var(--olive-bg);      border-color: var(--olive);       color: var(--olive); }
 .answerBtn.wrong    { background: var(--terracotta-bg);  border-color: var(--terracotta);  color: var(--terracotta); }
 .answerBtn.notSure  { background: var(--gold-bg);        border-color: var(--gold);        color: var(--gold); }
 
+.answerBtn.easy:hover     { background: #c8e6c9; }
 .answerBtn.correct:hover  { background: #ddeedd; }
 .answerBtn.wrong:hover    { background: #ffdddd; }
 .answerBtn.notSure:hover  { background: var(--bg-active); }
@@ -355,6 +358,7 @@
   transition: all 0.15s;
 }
 .changeBtn:hover { background: var(--bg-hover); border-color: var(--border-strong); transform: scale(1.1); }
+.changeBtnType_easy:hover     { border-color: #43a047; }
 .changeBtnType_correct:hover  { border-color: var(--olive); }
 .changeBtnType_wrong:hover    { border-color: var(--terracotta); }
 .changeBtnType_not_sure:hover { border-color: var(--gold); }
