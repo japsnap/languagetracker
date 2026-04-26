@@ -361,7 +361,6 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
         .from('sessions')
         .insert({
           user_id: userIdRef.current,
-          mode: quizModeRef.current,
           device: detectDevice(),
           started_at: new Date().toISOString(),
         })

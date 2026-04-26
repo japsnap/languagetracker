@@ -249,16 +249,11 @@ export function buildReviewLogRow({
   const now = new Date();
   const tz = userTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  // Extract local hour and weekday name using Intl — avoids any date-fns dependency.
-  const localParts = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    hour: 'numeric',
-    weekday: 'long',
-    hour12: false,
-  }).formatToParts(now);
-
-  const localHour = parseInt(localParts.find(p => p.type === 'hour')?.value ?? '0', 10);
-  const dayOfWeek = localParts.find(p => p.type === 'weekday')?.value ?? 'Monday';
+  // Re-parse now into the user's timezone so .getHours()/.getDay() return local values.
+  // day_of_week is SMALLINT in the schema: 0=Sunday … 6=Saturday.
+  const localDate = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+  const localHour = localDate.getHours();  // 0-23
+  const dayOfWeek = localDate.getDay();    // 0-6
 
   return {
     user_id: userId,
@@ -272,11 +267,9 @@ export function buildReviewLogRow({
     state_before: stateBefore?.state ?? null,
     stability_before: stateBefore?.stability ?? null,
     difficulty_before: stateBefore?.difficulty ?? null,
-    due_before: stateBefore?.due_at ?? null,
     state_after: stateAfter.next_state,
     stability_after: stateAfter.stability,
     difficulty_after: stateAfter.difficulty,
-    due_after: stateAfter.due_at,
     device,
     input_method: inputMethod,
     interference_word_id: interferenceWordId,
