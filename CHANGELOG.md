@@ -1,94 +1,14 @@
 # Changelog
 
+## 2026-04-26 (schema mismatch fixes)
+
+- **FIX: sessions insert** — removed `mode` field; the sessions table has no mode column. Mode breakdown is available by joining `review_log ON session_id` and grouping by `review_log.mode`.
+- **FIX: review_log insert** — removed `due_before` and `due_after` fields; those columns do not exist in the schema. FSRS due timestamps live in `word_reviews_state.due_at` only.
+- **FIX: review_log day_of_week** — was sending a string ("Sunday") to a `SMALLINT` column; changed to `localDate.getDay()` → integer 0–6 (0=Sunday).
+
 ## 2026-04-25 (FSRS wired into Quiz UI)
 
-### Required DB migrations (run once in Supabase SQL Editor)
-
-```sql
--- FSRS per-card state (source of truth for scheduling)
-CREATE TABLE IF NOT EXISTS word_reviews_state (
-  id             uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id        uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  word_id        uuid        NOT NULL REFERENCES vocabulary(id) ON DELETE CASCADE,
-  mode           text        NOT NULL,
-  state          text        NOT NULL DEFAULT 'new',
-  stability      float,
-  difficulty     float,
-  due_at         timestamptz NOT NULL DEFAULT now(),
-  last_review_at timestamptz,
-  review_count   int         NOT NULL DEFAULT 0,
-  lapse_count    int         NOT NULL DEFAULT 0,
-  updated_at     timestamptz DEFAULT now(),
-  UNIQUE (user_id, word_id, mode)
-);
-ALTER TABLE word_reviews_state ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users manage own reviews_state" ON word_reviews_state FOR ALL USING (auth.uid() = user_id);
-
--- Per-review audit log (analytics + future retention modeling)
-CREATE TABLE IF NOT EXISTS review_log (
-  id                   uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id              uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  word_id              uuid        NOT NULL REFERENCES vocabulary(id) ON DELETE CASCADE,
-  mode                 text        NOT NULL,
-  session_id           uuid,
-  session_position     int,
-  grade                text,
-  response_time_ms     int,
-  is_correct           boolean,
-  state_before         text,
-  stability_before     float,
-  difficulty_before    float,
-  due_before           timestamptz,
-  state_after          text,
-  stability_after      float,
-  difficulty_after     float,
-  due_after            timestamptz,
-  device               text,
-  input_method         text,
-  interference_word_id uuid,
-  local_hour           int,
-  day_of_week          text,
-  reviewed_at          timestamptz DEFAULT now()
-);
-ALTER TABLE review_log ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users manage own review_log" ON review_log FOR ALL USING (auth.uid() = user_id);
-
--- Quiz session tracking
-CREATE TABLE IF NOT EXISTS sessions (
-  id              uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id         uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  mode            text,
-  device          text,
-  started_at      timestamptz DEFAULT now(),
-  ended_at        timestamptz,
-  review_count    int         DEFAULT 0,
-  correct_count   int         DEFAULT 0,
-  avg_response_ms int
-);
-ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users manage own sessions" ON sessions FOR ALL USING (auth.uid() = user_id);
-
--- Interference event log (v1 stub — matching logic added in v1.5)
-CREATE TABLE IF NOT EXISTS interference_events (
-  id                uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id           uuid        NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-  target_word_id    uuid        NOT NULL REFERENCES vocabulary(id) ON DELETE CASCADE,
-  typed_text        text,
-  matched_word      text,
-  interference_type text        DEFAULT 'unknown',
-  session_id        uuid,
-  created_at        timestamptz DEFAULT now()
-);
-ALTER TABLE interference_events ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "users manage own interference_events" ON interference_events FOR ALL USING (auth.uid() = user_id);
-
--- FSRS preferences on user_preferences (graceful defaults applied if columns absent)
-ALTER TABLE user_preferences
-  ADD COLUMN IF NOT EXISTS timezone         text,
-  ADD COLUMN IF NOT EXISTS desired_retention float DEFAULT 0.80,
-  ADD COLUMN IF NOT EXISTS fsrs_weights      jsonb,
-  ADD COLUMN IF NOT EXISTS daily_review_goal int   DEFAULT 20;
-```
+DB migrations (already run in Supabase): tables `word_reviews_state`, `sessions`, `review_log`, `interference_events` created; `user_preferences` extended with `timezone`, `desired_retention`, `fsrs_weights`, `daily_review_goal`.
 
 ### What changed
 

@@ -23,6 +23,7 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - CSS Modules for all component styling, global tokens in global.css
 - Match existing design language: Nunito font, minimal grey/black/white
 - Never expose API keys in client-side code
+- Never paste full SQL into CHANGELOG — reference migrations by date and table list only
 
 ## Commands
 - Dev server: npm run dev
@@ -43,7 +44,7 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 ### Languages
 - 11 supported languages: EN ES JA DE KO ZH UR HI PT FR IT
 - Three-role language system: input_language (what user types), learning_language (word/example/related_words), primary_language (meaning/pos/notes)
-- User preferences table (`user_preferences`): primary_language, learning_language, secondary_languages
+- User preferences table (`user_preferences`): primary_language, learning_language, secondary_languages, timezone, desired_retention, fsrs_weights, daily_review_goal
 - Secondary language mini-cards shown alongside main card on Input page
 
 ### Vocabulary Table Schema (key columns)
@@ -73,12 +74,13 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - `api/admin-stats.js`: GET-only, admin-gated (403 for non-admin), uses `SUPABASE_SERVICE_ROLE_KEY` to count vocabulary rows across all users bypassing RLS
 
 ### Quiz
-- Easy mode: recognition, self-assess with ✅ ❌ 🤷
+- Easy mode: recognition, self-assess with 🎯 ✅ ❌ 🤷 (🎯 = FSRS 'easy' grade, counts as correct for legacy streak)
 - Hard mode: typed production; user types the word from the meaning prompt; accepts `word` field OR any `word_alternatives` entry (Levenshtein ≤ 1 leniency for words > 3 chars)
 - Revealed card always shows full content in both modes: correct word, answer comparison (Hard), meaning, example, related_words, notes
 - Enter key on revealed card advances to next word (deferred via `setTimeout(0)`)
-- Go-back one word: ← Previous button; undoes DB stats if already answered; restores session counts
-- 0-attempt words shown first before weighted selection
+- Go-back one word: ← Previous button; undoes DB stats if already answered; restores session counts; reverts FSRS writes
+- FSRS card selection (`pickNextFsrs`): 0-attempt new → due learning → due relearning → remaining new → due review → earliest not-yet-due
+- On every answer: upserts `word_reviews_state`, inserts `review_log` row, updates `sessions` on unmount/inactivity — all fire-and-forget
 - Language filter chips when vocabulary spans multiple languages
 - TagBar in revealed section (small size) — tags use local state reset on word.id change; persist via onUpdateWord
 - "Mark as mastered" button in revealed section — one-way, local state pattern; use Review to untoggle
@@ -112,6 +114,19 @@ Multilingual vocabulary learning app. React (Vite) + Supabase + Anthropic API + 
 - SpeakerButton on both card faces (front: wordBigRow wrapper; back: wordSmallRow wrapper)
 - `src/utils/explore.js` — seeded cache-miss path uses `mode='single'` + `word=seed.word` (invariant: never swap to mode='explore')
 - `api/seed-update.js` — enrich (PATCH by seedId) + add_seed (upsert by word+language); called fire-and-forget
+
+### FSRS Tables (authoritative column lists — do not send fields not listed here)
+
+`sessions`: id, user_id, device, started_at, ended_at, review_count, correct_count, avg_response_ms, created_at
+- No `mode` column — sessions are mode-agnostic; join `review_log ON session_id` for per-mode breakdown
+
+`review_log`: id, user_id, word_id, mode, session_id, session_position, grade, response_time_ms, is_correct, state_before, stability_before, difficulty_before, state_after, stability_after, difficulty_after, elapsed_days, device, input_method, interference_word_id, local_hour, day_of_week, reviewed_at, created_at
+- No `due_before` / `due_after` columns — due timestamps live in `word_reviews_state.due_at` only
+- `day_of_week` is SMALLINT: send integer 0–6 (0=Sunday), not a string
+
+`word_reviews_state`: id, user_id, word_id, mode, state, stability, difficulty, due_at, last_review_at, review_count, lapse_count, updated_at, created_at
+
+`interference_events`: id, user_id, target_word_id, typed_text, matched_word, matched_language, interference_type, session_id, created_at
 
 ## Serverless Functions (api/)
 - `api/anthropic.js` — AI word lookup proxy, auth-gated (401 for unauthenticated)
