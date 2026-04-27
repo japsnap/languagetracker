@@ -78,6 +78,14 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
     onUpdatePreferences({ desired_retention: pct / 100 });
   }
 
+  function handleDailyLimitChange(val) {
+    onUpdatePreferences({ daily_new_limit: val });
+  }
+
+  function handleUnlimitedToggle() {
+    onUpdatePreferences({ daily_new_unlimited: !(preferences?.daily_new_unlimited ?? false) });
+  }
+
   function handleExportCSV() {
     logEvent('csv_export', { word_count: words.length });
     const csv = buildCSV(words);
@@ -199,6 +207,7 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
           <h2 className={styles.sectionTitle}>Quiz</h2>
           <div className={styles.card}>
             {preferences ? (
+              <>
               <div className={styles.sliderRow}>
                 <div className={styles.sliderHeader}>
                   <span className={styles.rowLabel}>Review Intensity</span>
@@ -220,6 +229,43 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
                   <span>95% · More reviews,<br />stronger long-term recall</span>
                 </div>
               </div>
+
+              <div className={styles.sliderDivider} />
+
+              <div className={styles.sliderRow}>
+                <div className={styles.sliderHeader}>
+                  <span className={styles.rowLabel}>Daily New Cards</span>
+                  <span className={`${styles.retentionValue} ${preferences.daily_new_unlimited ? styles.retentionValueDisabled : ''}`}>
+                    {preferences.daily_new_unlimited ? '∞' : (preferences.daily_new_limit ?? 20)}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="5"
+                  max="30"
+                  step="5"
+                  value={preferences.daily_new_limit ?? 20}
+                  onChange={e => handleDailyLimitChange(Number(e.target.value))}
+                  disabled={preferences.daily_new_unlimited ?? false}
+                  className={`${styles.retentionSlider} ${preferences.daily_new_unlimited ? styles.sliderDisabled : ''}`}
+                />
+                <div className={styles.sliderLegends}>
+                  <span>5 · Consolidate<br />what you have</span>
+                  <span>30 · Faster<br />vocabulary growth</span>
+                </div>
+                <label className={styles.checkRow}>
+                  <input
+                    type="checkbox"
+                    checked={preferences.daily_new_unlimited ?? false}
+                    onChange={handleUnlimitedToggle}
+                  />
+                  No daily limit
+                </label>
+                <p className={styles.dailyLimitLegend}>
+                  How many new words to introduce per day. Lower means consolidating what you have. Higher means faster vocabulary growth.
+                </p>
+              </div>
+              </>
             ) : (
               <div className={styles.row}>
                 <span className={styles.rowDesc}>Loading…</span>

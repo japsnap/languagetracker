@@ -22,6 +22,8 @@ const DEFAULT_PREFERENCES = {
   learning_language: 'es',
   secondary_languages: [],
   desired_retention: 0.80,
+  daily_new_limit: 20,
+  daily_new_unlimited: false,
 };
 
 export async function getPreferences(userId) {

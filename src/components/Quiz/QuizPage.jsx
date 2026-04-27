@@ -154,6 +154,58 @@ async function lookupCollision(typedInput, learningLang) {
 }
 
 // ---------------------------------------------------------------------------
+// Daily new-card limit helpers (module-level, pure)
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns the UTC timestamp of today's local midnight for a given IANA timezone.
+ * Used to scope the daily-new-card count to the user's calendar day.
+ */
+function getTodayMidnightUTC(timezone) {
+  const tz = timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const now = new Date();
+  // Today as "YYYY-MM-DD" in user's timezone
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: tz });
+  // Compute the UTC offset at this moment via formatToParts (more reliable than toLocaleString→parse)
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: false,
+  }).formatToParts(now).reduce((acc, p) => {
+    if (p.type !== 'literal') acc[p.type] = parseInt(p.value, 10);
+    return acc;
+  }, {});
+  // offsetMs > 0 means TZ is ahead of UTC (e.g. UTC+9 → offsetMs = +9h)
+  const tzAsUTC = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  const offsetMs = tzAsUTC - now.getTime();
+  const [y, m, d] = todayStr.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0) - offsetMs);
+}
+
+/**
+ * Fetch the number of distinct new-card introductions today for a user.
+ * A "new introduction" is a review_log row where state_before IS NULL
+ * (the word had no prior FSRS state) and reviewed_at >= today's local midnight.
+ */
+async function fetchDailyNewCount(userId, timezone) {
+  if (!userId) return 0;
+  const midnight = getTodayMidnightUTC(timezone);
+  try {
+    const { data } = await supabase
+      .from('review_log')
+      .select('word_id')
+      .eq('user_id', userId)
+      .is('state_before', null)
+      .gte('reviewed_at', midnight.toISOString());
+    const unique = new Set((data || []).map(r => r.word_id));
+    return unique.size;
+  } catch {
+    return 0; // graceful — review_log table may not exist yet
+  }
+}
+
+// ---------------------------------------------------------------------------
 // FSRS helpers (module-level — no component state, pure or ref-based)
 // ---------------------------------------------------------------------------
 
@@ -173,8 +225,9 @@ function detectDevice() {
  *
  * New quiz modes (conjugation/cloze/audio) require no changes here — mode is
  * stored in word_reviews_state and filtered by the caller.
+ * @param {object} newLimitConfig - { unlimited, limit, todayCount }
  */
-function pickNextFsrs(pool, stateMap, lastShownId) {
+function pickNextFsrs(pool, stateMap, lastShownId, newLimitConfig = {}) {
   if (pool.length === 0) return null;
   const candidates = pool.length > 1 ? pool.filter(w => w.id !== lastShownId) : pool;
   if (candidates.length === 0) return pool[0];
@@ -206,9 +259,13 @@ function pickNextFsrs(pool, stateMap, lastShownId) {
   // 3. FSRS-untouched 'new' words: state='new' AND review_count=0.
   // Uses FSRS-native data, not legacy vocabulary.total_attempts, so words with
   // pre-FSRS quiz history are correctly included as long as they have no FSRS answer yet.
-  const fsrsUntouched = tagged.filter(t => t.state === 'new' && t.reviewCount === 0);
-  if (fsrsUntouched.length > 0) {
-    return fsrsUntouched[Math.floor(Math.random() * fsrsUntouched.length)].word;
+  // Gated by daily_new_limit unless daily_new_unlimited is true.
+  const { unlimited = false, limit = 20, todayCount = 0 } = newLimitConfig;
+  if (unlimited || todayCount < limit) {
+    const fsrsUntouched = tagged.filter(t => t.state === 'new' && t.reviewCount === 0);
+    if (fsrsUntouched.length > 0) {
+      return fsrsUntouched[Math.floor(Math.random() * fsrsUntouched.length)].word;
+    }
   }
 
   // 4. Remaining 'new' words (FSRS row exists but still in 'new' state with review_count > 0)
@@ -265,6 +322,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   const revealedAtRef           = useRef(null); // performance.now() when question shown
   const reviewsStateMapRef      = useRef(new Map()); // word_id → word_reviews_state row
   const lastFsrsUndoRef         = useRef(null); // undo info for go-back
+  const dailyNewCountRef        = useRef(null); // null = unfetched; number = today's new-card count
   const inactivityTimerRef      = useRef(null);
   const userIdRef               = useRef(null); // stable copy for cleanup/async
   const quizModeRef             = useRef(quizMode); // stable copy for async fns
@@ -513,7 +571,19 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   // ---------------------------------------------------------------------------
 
   function startOrNext() {
-    const next = pickNextFsrs(pool, reviewsStateMapRef.current, lastShownId);
+    // Lazy-fetch daily new count once per session (fire-and-forget; 0 used until resolved)
+    if (dailyNewCountRef.current === null) {
+      dailyNewCountRef.current = 0; // optimistic default so quiz doesn't block
+      fetchDailyNewCount(userIdRef.current, fsrsPrefsRef.current.timezone)
+        .then(count => { dailyNewCountRef.current = count; })
+        .catch(() => {});
+    }
+    const newLimitConfig = {
+      unlimited: preferences?.daily_new_unlimited ?? false,
+      limit:     preferences?.daily_new_limit     ?? 20,
+      todayCount: dailyNewCountRef.current ?? 0,
+    };
+    const next = pickNextFsrs(pool, reviewsStateMapRef.current, lastShownId, newLimitConfig);
     if (!next) {
       setPhase('done');
       return;
@@ -570,6 +640,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
               .eq('user_id', uid).eq('word_id', wordId).eq('mode', mode)
               .then(null, () => {});
             reviewsStateMapRef.current.delete(wordId);
+            // Undo the daily new count increment for this introduction
+            dailyNewCountRef.current = Math.max(0, (dailyNewCountRef.current ?? 0) - 1);
           }
           // Revert session counters
           sessionReviewCountRef.current = Math.max(0, sessionReviewCountRef.current - 1);
@@ -644,6 +716,12 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
 
       // FSRS write — fire-and-forget; graceful if tables don't exist yet
       _writeFsrsResult(current, type, responseTimeMs).catch(() => {});
+
+      // Track daily new-card count: if this word had no prior FSRS state it's a new introduction
+      const fsrsRow = reviewsStateMapRef.current.get(current.id);
+      if (!fsrsRow || fsrsRow.review_count === 0) {
+        dailyNewCountRef.current = (dailyNewCountRef.current ?? 0) + 1;
+      }
 
       // Reset 10-min inactivity flush
       _resetInactivityTimer();
@@ -742,6 +820,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     sessionCorrectCountRef.current = 0;
     sessionResponseTimesRef.current = [];
     lastFsrsUndoRef.current = null;
+    dailyNewCountRef.current = null; // re-fetch from DB on next session start
     clearTimeout(inactivityTimerRef.current);
   }
 

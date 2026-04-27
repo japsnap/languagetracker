@@ -233,3 +233,43 @@
 .sliderLegends span:last-child {
   text-align: right;
 }
+
+.sliderDivider {
+  height: 1px;
+  background: var(--border);
+  margin: 0.25rem 0;
+}
+
+.sliderDisabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.retentionValueDisabled {
+  color: var(--text-muted);
+}
+
+.checkRow {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  padding-top: 0.25rem;
+}
+.checkRow input {
+  cursor: pointer;
+  accent-color: var(--text-primary);
+  width: 15px;
+  height: 15px;
+}
+
+.dailyLimitLegend {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+  padding-top: 0.15rem;
+}
