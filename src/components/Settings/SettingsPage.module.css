@@ -221,18 +221,15 @@
   accent-color: var(--text-primary);
 }
 
-.sliderTicks {
+.sliderLegends {
   display: flex;
   justify-content: space-between;
   font-size: 0.72rem;
   color: var(--text-muted);
+  line-height: 1.45;
   padding: 0 1px;
 }
 
-.retentionLegend {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  line-height: 1.4;
-  margin: 0;
-  padding-top: 0.15rem;
+.sliderLegends span:last-child {
+  text-align: right;
 }

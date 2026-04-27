@@ -358,7 +358,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
       review_count: sessionReviewCountRef.current,
       correct_count: sessionCorrectCountRef.current,
       avg_response_ms: avgMs,
-    }).eq('id', sid).catch(() => {});
+    }).eq('id', sid).then(null, () => {});
   }
 
   function _resetInactivityTimer() {
@@ -544,19 +544,19 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
         const uid = userIdRef.current;
         if (uid) {
           if (reviewLogId) {
-            supabase.from('review_log').delete().eq('id', reviewLogId).catch(() => {});
+            supabase.from('review_log').delete().eq('id', reviewLogId).then(null, () => {});
           }
           if (prevState) {
             supabase.from('word_reviews_state')
               .upsert({ ...prevState, updated_at: new Date().toISOString() }, { onConflict: 'user_id,word_id,mode' })
-              .catch(() => {});
+              .then(null, () => {});
             reviewsStateMapRef.current.set(wordId, prevState);
           } else {
             // Word was new — remove the state row entirely
             supabase.from('word_reviews_state')
               .delete()
               .eq('user_id', uid).eq('word_id', wordId).eq('mode', mode)
-              .catch(() => {});
+              .then(null, () => {});
             reviewsStateMapRef.current.delete(wordId);
           }
           // Revert session counters

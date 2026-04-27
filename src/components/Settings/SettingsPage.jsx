@@ -215,17 +215,10 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
                   onChange={e => handleRetentionChange(Number(e.target.value))}
                   className={styles.retentionSlider}
                 />
-                <div className={styles.sliderTicks}>
-                  <span>70%</span>
-                  <span>75%</span>
-                  <span>80%</span>
-                  <span>85%</span>
-                  <span>90%</span>
-                  <span>95%</span>
+                <div className={styles.sliderLegends}>
+                  <span>70% · Fewer reviews,<br />more forgetting allowed</span>
+                  <span>95% · More reviews,<br />stronger long-term recall</span>
                 </div>
-                <p className={styles.retentionLegend}>
-                  Lower = fewer reviews, some forgetting allowed. Higher = more frequent reviews, stronger long-term recall.
-                </p>
               </div>
             ) : (
               <div className={styles.row}>
