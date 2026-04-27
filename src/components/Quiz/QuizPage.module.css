@@ -176,7 +176,7 @@
 }
 
 .card_easy      { border-color: #43a047; }
-.card_correct   { border-color: var(--olive); }
+.card_correct   { border-color: #1565c0; }
 .card_wrong     { border-color: var(--terracotta); }
 .card_not_sure  { border-color: var(--gold); }
 
@@ -287,15 +287,15 @@
   white-space: nowrap;
 }
 
-.answerBtn.easy     { background: #e8f5e9;               border-color: #43a047;            color: #2e7d32; }
-.answerBtn.correct  { background: var(--olive-bg);      border-color: var(--olive);       color: var(--olive); }
-.answerBtn.wrong    { background: var(--terracotta-bg);  border-color: var(--terracotta);  color: var(--terracotta); }
-.answerBtn.notSure  { background: var(--gold-bg);        border-color: var(--gold);        color: var(--gold); }
+.answerBtn.easy     { background: #e8f5e9;              border-color: #43a047;           color: #2e7d32; }
+.answerBtn.correct  { background: #e3f2fd;              border-color: #1565c0;           color: #1565c0; }
+.answerBtn.notSure  { background: var(--gold-bg);       border-color: var(--gold);       color: var(--gold); }
+.answerBtn.wrong    { background: var(--terracotta-bg); border-color: var(--terracotta); color: var(--terracotta); }
 
 .answerBtn.easy:hover     { background: #c8e6c9; }
-.answerBtn.correct:hover  { background: #ddeedd; }
-.answerBtn.wrong:hover    { background: #ffdddd; }
+.answerBtn.correct:hover  { background: #bbdefb; }
 .answerBtn.notSure:hover  { background: var(--bg-active); }
+.answerBtn.wrong:hover    { background: #ffdddd; }
 
 /* ── Reveal ─────────────────────────────────────────────────────────────────── */
 
@@ -359,7 +359,7 @@
 }
 .changeBtn:hover { background: var(--bg-hover); border-color: var(--border-strong); transform: scale(1.1); }
 .changeBtnType_easy:hover     { border-color: #43a047; }
-.changeBtnType_correct:hover  { border-color: var(--olive); }
+.changeBtnType_correct:hover  { border-color: #1565c0; }
 .changeBtnType_wrong:hover    { border-color: var(--terracotta); }
 .changeBtnType_not_sure:hover { border-color: var(--gold); }
 

@@ -25,7 +25,7 @@ const LEVEL_COLORS = {
 };
 
 // 'easy' added for FSRS 🎯 Easy button (Easy mode only)
-const ANSWER_ICONS = { easy: '🎯', correct: '✅', wrong: '❌', 'not-sure': '🤷' };
+const ANSWER_ICONS = { easy: '🎯', correct: '✅', wrong: '❌', 'not-sure': '🤔' };
 
 const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak: 0 };
 
@@ -871,7 +871,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
           <span className={styles.statItem}>Reviewed: <strong>{reviewed}</strong></span>
           <span className={`${styles.statItem} ${styles.statCorrect}`}>✅ <strong>{session.correct}</strong></span>
           <span className={`${styles.statItem} ${styles.statWrong}`}>❌ <strong>{session.wrong}</strong></span>
-          <span className={`${styles.statItem} ${styles.statNotSure}`}>🤷 <strong>{session.notSure}</strong></span>
+          <span className={`${styles.statItem} ${styles.statNotSure}`}>🤔 <strong>{session.notSure}</strong></span>
           <span className={styles.statItem}>Streak: <strong>{session.streak}</strong></span>
         </div>
       )}
@@ -940,8 +940,8 @@ function IdleScreen({ pool, onStart }) {
   );
 }
 
-// All answer types including 'easy' (🎯). Change-answer shows all but the current one.
-const ALL_ANSWER_TYPES = ['easy', 'correct', 'wrong', 'not-sure'];
+// All answer types including 'easy' (🎯). Order matches button layout. Change-answer shows all but the current one.
+const ALL_ANSWER_TYPES = ['easy', 'correct', 'not-sure', 'wrong'];
 
 function QuizCard({
   word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode,
@@ -1048,13 +1048,13 @@ function QuizCard({
           </div>
         )}
 
-        {/* Easy mode answer buttons — 🎯 Easy added as the top grade option */}
+        {/* Easy mode answer buttons */}
         {!isHard && phase === 'question' && (
           <div className={styles.answerButtons}>
             <button className={`${styles.answerBtn} ${styles.easy}`}    onClick={() => onAnswer('easy')}>🎯 Easy</button>
             <button className={`${styles.answerBtn} ${styles.correct}`} onClick={() => onAnswer('correct')}>✅ I knew it</button>
-            <button className={`${styles.answerBtn} ${styles.wrong}`}   onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
-            <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>🤷 Lucky guess</button>
+            <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>🤔 Hesitated</button>
+            <button className={`${styles.answerBtn} ${styles.wrong}`}   onClick={() => onAnswer('wrong')}>❌ Don't know</button>
           </div>
         )}
 
@@ -1089,8 +1089,8 @@ function QuizCard({
               <div className={styles.answerButtons}>
                 <button className={`${styles.answerBtn} ${styles.easy}`}    onClick={() => onAnswer('easy')}>🎯 Easy</button>
                 <button className={`${styles.answerBtn} ${styles.correct}`} onClick={() => onAnswer('correct')}>✅ I knew it</button>
-                <button className={`${styles.answerBtn} ${styles.wrong}`}   onClick={() => onAnswer('wrong')}>❌ I didn't know it</button>
-                <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>🤷 Lucky guess</button>
+                <button className={`${styles.answerBtn} ${styles.notSure}`} onClick={() => onAnswer('not-sure')}>🤔 Hesitated</button>
+                <button className={`${styles.answerBtn} ${styles.wrong}`}   onClick={() => onAnswer('wrong')}>❌ Don't know</button>
               </div>
             </div>
           </div>
@@ -1151,8 +1151,8 @@ function QuizCard({
                       title={
                         type === 'easy'     ? 'Easy — I got it instantly'  :
                         type === 'correct'  ? 'I knew it'                   :
-                        type === 'wrong'    ? "I didn't know it"            :
-                        'Lucky guess'
+                        type === 'not-sure' ? 'Hesitated'                   :
+                        "Don't know"
                       }
                     >
                       {ANSWER_ICONS[type]}
@@ -1212,7 +1212,7 @@ function DoneScreen({ session, reviewed, onRestart }) {
         <SummaryStat label="Reviewed"    value={reviewed} />
         <SummaryStat label="✅ Correct"  value={session.correct}    color="#4caf79" />
         <SummaryStat label="❌ Wrong"    value={session.wrong}      color="#e07070" />
-        <SummaryStat label="🤷 Not sure" value={session.notSure}    color="#e8a44a" />
+        <SummaryStat label="🤔 Hesitated" value={session.notSure}   color="#e8a44a" />
         <SummaryStat label="Best streak" value={session.bestStreak} />
       </div>
       <button className={styles.startBtn} onClick={onRestart}>Start over</button>
