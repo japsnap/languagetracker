@@ -165,8 +165,12 @@ function detectDevice() {
 
 /**
  * FSRS-aware card selection.
- * Priority: FSRS-untouched new → due learning → due relearning → remaining new →
- *           due review → earliest not-yet-due (never blocks the user).
+ * Priority: due learning → due relearning → FSRS-untouched new →
+ *           remaining new → due review → earliest not-yet-due (never blocks the user).
+ *
+ * Due learning/relearning MUST fire before new introductions — FSRS learning
+ * steps are time-critical (minutes apart) and are lost if skipped.
+ *
  * New quiz modes (conjugation/cloze/audio) require no changes here — mode is
  * stored in word_reviews_state and filtered by the caller.
  */
@@ -187,7 +191,19 @@ function pickNextFsrs(pool, stateMap, lastShownId) {
     };
   });
 
-  // 1. FSRS-untouched 'new' words: state='new' AND review_count=0.
+  // 1. Due 'learning' — most urgent (short FSRS step intervals, must not be skipped)
+  const dueLearning = tagged
+    .filter(t => t.state === 'learning' && t.due <= now)
+    .sort((a, b) => a.due - b.due);
+  if (dueLearning.length > 0) return dueLearning[0].word;
+
+  // 2. Due 'relearning' — also time-critical
+  const dueRelearning = tagged
+    .filter(t => t.state === 'relearning' && t.due <= now)
+    .sort((a, b) => a.due - b.due);
+  if (dueRelearning.length > 0) return dueRelearning[0].word;
+
+  // 3. FSRS-untouched 'new' words: state='new' AND review_count=0.
   // Uses FSRS-native data, not legacy vocabulary.total_attempts, so words with
   // pre-FSRS quiz history are correctly included as long as they have no FSRS answer yet.
   const fsrsUntouched = tagged.filter(t => t.state === 'new' && t.reviewCount === 0);
@@ -195,19 +211,7 @@ function pickNextFsrs(pool, stateMap, lastShownId) {
     return fsrsUntouched[Math.floor(Math.random() * fsrsUntouched.length)].word;
   }
 
-  // 2. Due 'learning' — most urgent (short FSRS step intervals)
-  const dueLearning = tagged
-    .filter(t => t.state === 'learning' && t.due <= now)
-    .sort((a, b) => a.due - b.due);
-  if (dueLearning.length > 0) return dueLearning[0].word;
-
-  // 3. Due 'relearning'
-  const dueRelearning = tagged
-    .filter(t => t.state === 'relearning' && t.due <= now)
-    .sort((a, b) => a.due - b.due);
-  if (dueRelearning.length > 0) return dueRelearning[0].word;
-
-  // 4. Remaining 'new' words (have a state row but still 'new')
+  // 4. Remaining 'new' words (FSRS row exists but still in 'new' state with review_count > 0)
   const newWords = tagged.filter(t => t.state === 'new');
   if (newWords.length > 0) {
     return newWords[Math.floor(Math.random() * newWords.length)].word;
