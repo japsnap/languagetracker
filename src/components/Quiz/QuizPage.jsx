@@ -165,7 +165,7 @@ function detectDevice() {
 
 /**
  * FSRS-aware card selection.
- * Priority: 0-attempt new → due learning → due relearning → remaining new →
+ * Priority: FSRS-untouched new → due learning → due relearning → remaining new →
  *           due review → earliest not-yet-due (never blocks the user).
  * New quiz modes (conjugation/cloze/audio) require no changes here — mode is
  * stored in word_reviews_state and filtered by the caller.
@@ -178,13 +178,21 @@ function pickNextFsrs(pool, stateMap, lastShownId) {
   const now = new Date();
   const tagged = candidates.map(w => {
     const s = stateMap.get(w.id);
-    return { word: w, state: s?.state ?? 'new', due: s?.due_at ? new Date(s.due_at) : now };
+    return {
+      word: w,
+      state: s?.state ?? 'new',
+      due: s?.due_at ? new Date(s.due_at) : now,
+      // review_count from FSRS state row; 0 when no row exists (never graded in FSRS)
+      reviewCount: s?.review_count ?? 0,
+    };
   });
 
-  // 1. 0-attempt 'new' words (preserves existing tier-1 priority)
-  const zeroAttempt = tagged.filter(t => t.state === 'new' && t.word.total_attempts === 0);
-  if (zeroAttempt.length > 0) {
-    return zeroAttempt[Math.floor(Math.random() * zeroAttempt.length)].word;
+  // 1. FSRS-untouched 'new' words: state='new' AND review_count=0.
+  // Uses FSRS-native data, not legacy vocabulary.total_attempts, so words with
+  // pre-FSRS quiz history are correctly included as long as they have no FSRS answer yet.
+  const fsrsUntouched = tagged.filter(t => t.state === 'new' && t.reviewCount === 0);
+  if (fsrsUntouched.length > 0) {
+    return fsrsUntouched[Math.floor(Math.random() * fsrsUntouched.length)].word;
   }
 
   // 2. Due 'learning' — most urgent (short FSRS step intervals)
