@@ -9,7 +9,7 @@ const TABS = [
   { id: 'settings', label: '⚙ Settings' },
 ];
 
-export default function Navigation({ activeTab, onTabChange, user, onSignOut }) {
+export default function Navigation({ activeTab, onTabChange, user, onSignOut, quizDueCount }) {
   return (
     <nav className={styles.nav}>
       <div className={styles.brand}>
@@ -24,7 +24,14 @@ export default function Navigation({ activeTab, onTabChange, user, onSignOut }) 
             className={`${styles.tab} ${activeTab === tab.id ? styles.active : ''}`}
             onClick={() => onTabChange(tab.id)}
           >
-            {tab.label}
+            {tab.id === 'quiz' && quizDueCount > 0 ? (
+              <span className={styles.tabWithBadge}>
+                {tab.label}
+                <span className={styles.tabBadge}>
+                  {quizDueCount > 99 ? '99+' : quizDueCount}
+                </span>
+              </span>
+            ) : tab.label}
           </button>
         ))}
       </div>

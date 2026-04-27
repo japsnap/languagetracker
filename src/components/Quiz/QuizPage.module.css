@@ -86,6 +86,25 @@
 }
 .poolCount strong { color: var(--text-secondary); }
 
+/* Due-count badge inside the Queue "Due" button */
+.queueDueBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 3px;
+  margin-left: 4px;
+  background: #e53935;
+  color: #fff;
+  border-radius: 8px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
 /* ── Stats strip ────────────────────────────────────────────────────────────── */
 
 .statsStrip {
@@ -130,6 +149,12 @@
 .idleReady strong { font-family: var(--font-heading); font-size: 1.75rem; color: var(--text-primary); }
 .idleEmpty { color: var(--text-secondary); font-size: 1rem; }
 .idleSub   { color: var(--text-muted); font-size: 0.875rem; }
+.idleDueHint {
+  font-size: 0.875rem;
+  color: #e53935;
+  font-weight: 600;
+}
+.idleDueHint strong { font-size: 1rem; }
 
 .startBtn {
   padding: 0.75rem 2.5rem;
@@ -399,6 +424,23 @@
 .doneIcon  { font-size: 3rem; }
 .doneTitle { font-family: var(--font-heading); font-size: 1.75rem; color: var(--text-primary); }
 .doneSub   { color: var(--text-muted); font-size: 0.95rem; }
+
+/* Quick-switch button on done screen */
+.switchModeBtn {
+  padding: 0.55rem 1.5rem;
+  background: transparent;
+  border: 2px solid var(--gold);
+  border-radius: var(--radius-md);
+  color: var(--gold);
+  font-size: 0.9rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.switchModeBtn:hover {
+  background: var(--gold-bg);
+}
 
 .doneSummary {
   display: flex;

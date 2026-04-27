@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-04-28 (FSRS surfacing in Quiz UI)
+
+- **FSRS Queue toggle (Due / All / New)** — New toggle in the Quiz settings strip (leftmost position). Session-only; not persisted to `user_preferences`.
+  - **Due** — only shows cards with `state in ('review','relearning')` AND `due_at <= now()`. Returns null when nothing is due → transitions to "All caught up!" done screen.
+  - **All** — existing behaviour (full FSRS priority order). Default.
+  - **New** — only FSRS-untouched new words (`state='new'`, `review_count=0`), respecting the daily new-card limit. Returns null when limit is hit or no new words remain.
+  - Switching modes during an active session calls `restart()` — returns to idle in the new mode.
+
+- **Due-today badge** — Strict count: `state in ('review','relearning') AND due_at <= now()`. Appears in two places:
+  - **Nav Quiz tab** — small red pill badge (`99+` cap); computed from `word_reviews_state` on pool load.
+  - **Queue "Due" button** — inline red badge showing the same count.
+  - **Live decrement** — when a due review/relearning card is answered, count decrements immediately without a re-fetch; propagated up to Navigation via `onDueCountChange` callback.
+
+- **Mode-aware empty states** — `DoneScreen` shows a different icon/title/subtitle based on `doneReason`:
+  - `all_caught_up` (Due mode) — "All caught up!" + quick-switch to New mode.
+  - `daily_limit` (New mode, limit hit) — "Daily limit reached!" + quick-switch to Due mode.
+  - `no_new_words` (New mode, no untouched words) — "No new words left" + quick-switch to Due mode.
+  - `done` (All mode, pool exhausted) — existing "No more words!" message.
+
+- **IdleScreen due hint** — when `dueCount > 0` and fsrsMode is not 'due', shows a red hint above the start button so due cards are visible at a glance.
+
 ## 2026-04-26 (schema mismatch fixes)
 
 - **FIX: sessions insert** — removed `mode` field; the sessions table has no mode column. Mode breakdown is available by joining `review_log ON session_id` and grouping by `review_log.mode`.

@@ -37,6 +37,30 @@
   align-items: stretch;
 }
 
+/* Tab badge (due-count indicator) */
+.tabWithBadge {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.tabBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  background: #e53935;
+  color: #fff;
+  border-radius: 9px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  font-family: var(--font-body);
+  line-height: 1;
+  letter-spacing: 0;
+}
+
 .tab {
   display: flex;
   align-items: center;

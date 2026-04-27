@@ -216,18 +216,23 @@ function detectDevice() {
 }
 
 /**
- * FSRS-aware card selection.
- * Priority: due learning → due relearning → FSRS-untouched new →
- *           remaining new → due review → earliest not-yet-due (never blocks the user).
+ * FSRS-aware card selection with queue mode support.
+ *
+ * fsrsMode:
+ *   'due'  — only show cards that are actually due (review/relearning/learning due now).
+ *            Returns null when nothing is due → "All caught up".
+ *   'new'  — only show FSRS-untouched new words, respecting daily limit.
+ *            Returns null when limit reached or no new words available.
+ *   'all'  — existing priority order: due learning → due relearning → new → due review → earliest.
+ *            Never returns null for a non-empty pool (falls back to earliest-due).
  *
  * Due learning/relearning MUST fire before new introductions — FSRS learning
  * steps are time-critical (minutes apart) and are lost if skipped.
  *
- * New quiz modes (conjugation/cloze/audio) require no changes here — mode is
- * stored in word_reviews_state and filtered by the caller.
  * @param {object} newLimitConfig - { unlimited, limit, todayCount }
+ * @param {string} fsrsMode - 'all' | 'due' | 'new'
  */
-function pickNextFsrs(pool, stateMap, lastShownId, newLimitConfig = {}) {
+function pickNextFsrs(pool, stateMap, lastShownId, newLimitConfig = {}, fsrsMode = 'all') {
   if (pool.length === 0) return null;
   const candidates = pool.length > 1 ? pool.filter(w => w.id !== lastShownId) : pool;
   if (candidates.length === 0) return pool[0];
@@ -243,6 +248,28 @@ function pickNextFsrs(pool, stateMap, lastShownId, newLimitConfig = {}) {
       reviewCount: s?.review_count ?? 0,
     };
   });
+
+  // ── 'due' mode: only cards that are actually due right now ────────────────
+  if (fsrsMode === 'due') {
+    const dueLearning = tagged.filter(t => t.state === 'learning' && t.due <= now).sort((a, b) => a.due - b.due);
+    if (dueLearning.length > 0) return dueLearning[0].word;
+    const dueRelearning = tagged.filter(t => t.state === 'relearning' && t.due <= now).sort((a, b) => a.due - b.due);
+    if (dueRelearning.length > 0) return dueRelearning[0].word;
+    const dueReview = tagged.filter(t => t.state === 'review' && t.due <= now).sort((a, b) => a.due - b.due);
+    if (dueReview.length > 0) return dueReview[0].word;
+    return null; // nothing due → caller sets doneReason='all_caught_up'
+  }
+
+  // ── 'new' mode: only FSRS-untouched new words ─────────────────────────────
+  if (fsrsMode === 'new') {
+    const { unlimited = false, limit = 20, todayCount = 0 } = newLimitConfig;
+    if (!unlimited && todayCount >= limit) return null; // daily limit → 'daily_limit'
+    const fsrsUntouched = tagged.filter(t => t.state === 'new' && t.reviewCount === 0);
+    if (fsrsUntouched.length === 0) return null; // no new words → 'no_new_words'
+    return fsrsUntouched[Math.floor(Math.random() * fsrsUntouched.length)].word;
+  }
+
+  // ── 'all' mode: full priority order (never dead-ends) ────────────────────
 
   // 1. Due 'learning' — most urgent (short FSRS step intervals, must not be skipped)
   const dueLearning = tagged
@@ -288,7 +315,7 @@ function pickNextFsrs(pool, stateMap, lastShownId, newLimitConfig = {}) {
 // QuizPage component
 // ---------------------------------------------------------------------------
 
-export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }) {
+export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, onDueCountChange }) {
   const { user } = useAuth();
 
   // ── existing quiz state ───────────────────────────────────────────────────
@@ -311,6 +338,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   const [typedAnswer, setTypedAnswer] = useState('');
   const [langFilter, setLangFilter] = useState('');
   const [collisionInfo, setCollisionInfo] = useState(null);
+  const [fsrsMode, setFsrsMode] = useState('all'); // 'all' | 'due' | 'new' — session-only, not persisted
+  const [doneReason, setDoneReason] = useState(null);
+  const [fsrsDueCount, setFsrsDueCount] = useState(null); // due cards for header badge
 
   // ── FSRS / session refs (all reads in async fns go through refs) ──────────
   const sessionIdRef            = useRef(null);
@@ -323,6 +353,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   const reviewsStateMapRef      = useRef(new Map()); // word_id → word_reviews_state row
   const lastFsrsUndoRef         = useRef(null); // undo info for go-back
   const dailyNewCountRef        = useRef(null); // null = unfetched; number = today's new-card count
+  const fsrsDueCountRef         = useRef(null); // imperative copy of fsrsDueCount for handleAnswer live decrement
+  const onDueCountChangeRef     = useRef(onDueCountChange); // kept current via effect below
   const inactivityTimerRef      = useRef(null);
   const userIdRef               = useRef(null); // stable copy for cleanup/async
   const quizModeRef             = useRef(quizMode); // stable copy for async fns
@@ -335,6 +367,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   // ── keep refs current ────────────────────────────────────────────────────
   useEffect(() => { userIdRef.current = user?.id ?? null; }, [user?.id]);
   useEffect(() => { quizModeRef.current = quizMode; }, [quizMode]);
+  useEffect(() => { onDueCountChangeRef.current = onDueCountChange; }, [onDueCountChange]);
   useEffect(() => {
     fsrsPrefsRef.current = {
       desiredRetention: preferences?.desired_retention ?? 0.80,
@@ -387,6 +420,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   useEffect(() => {
     if (!user?.id || pool.length === 0) {
       reviewsStateMapRef.current = new Map();
+      setFsrsDueCount(0);
+      fsrsDueCountRef.current = 0;
+      onDueCountChangeRef.current?.(0);
       return;
     }
     supabase
@@ -399,6 +435,15 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
         const map = new Map();
         (data || []).forEach(row => map.set(row.word_id, row));
         reviewsStateMapRef.current = map;
+        // Compute how many cards are due for review right now
+        const now = new Date();
+        const count = (data || []).filter(row =>
+          (row.state === 'review' || row.state === 'relearning') &&
+          row.due_at && new Date(row.due_at) <= now
+        ).length;
+        setFsrsDueCount(count);
+        fsrsDueCountRef.current = count;
+        onDueCountChangeRef.current?.(count);
       })
       .catch(() => {}); // graceful — table may not exist yet
   }, [pool, quizMode, user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -583,8 +628,17 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
       limit:     preferences?.daily_new_limit     ?? 20,
       todayCount: dailyNewCountRef.current ?? 0,
     };
-    const next = pickNextFsrs(pool, reviewsStateMapRef.current, lastShownId, newLimitConfig);
+    const next = pickNextFsrs(pool, reviewsStateMapRef.current, lastShownId, newLimitConfig, fsrsMode);
     if (!next) {
+      // Determine why there are no more cards to show
+      let reason = 'done';
+      if (fsrsMode === 'due') {
+        reason = 'all_caught_up';
+      } else if (fsrsMode === 'new') {
+        const { unlimited, limit, todayCount } = newLimitConfig;
+        reason = (!unlimited && todayCount >= limit) ? 'daily_limit' : 'no_new_words';
+      }
+      setDoneReason(reason);
       setPhase('done');
       return;
     }
@@ -723,6 +777,16 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
         dailyNewCountRef.current = (dailyNewCountRef.current ?? 0) + 1;
       }
 
+      // Live-decrement the due badge when a review/relearning card that was due gets answered
+      const wasDueCard = (fsrsRow?.state === 'review' || fsrsRow?.state === 'relearning') &&
+        fsrsRow?.due_at && new Date(fsrsRow.due_at) <= new Date();
+      if (wasDueCard && fsrsDueCountRef.current !== null) {
+        const newCount = Math.max(0, fsrsDueCountRef.current - 1);
+        fsrsDueCountRef.current = newCount;
+        setFsrsDueCount(newCount);
+        onDueCountChangeRef.current?.(newCount);
+      }
+
       // Reset 10-min inactivity flush
       _resetInactivityTimer();
 
@@ -812,6 +876,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     setCanGoBack(false);
     setTypedAnswer('');
     setCollisionInfo(null);
+    setDoneReason(null);
     // Reset FSRS session state so next "Start Quiz" creates a fresh session
     sessionCreatedRef.current = false;
     sessionIdRef.current = null;
@@ -837,6 +902,34 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
     <div className={styles.page}>
       {/* Settings strip */}
       <div className={styles.settingsStrip}>
+
+        {/* FSRS Queue toggle — Due / All / New (session-only, not persisted) */}
+        {!exploreMode && (
+          <div className={styles.settingsGroup}>
+            <span className={styles.settingsLabel}>Queue:</span>
+            <button
+              className={`${styles.levelBtn} ${fsrsMode === 'due' ? styles.levelActive : ''}`}
+              onClick={() => { setFsrsMode('due'); if (phase !== 'idle') restart(); }}
+            >
+              Due
+              {fsrsDueCount !== null && fsrsDueCount > 0 && (
+                <span className={styles.queueDueBadge}>{fsrsDueCount > 99 ? '99+' : fsrsDueCount}</span>
+              )}
+            </button>
+            <button
+              className={`${styles.levelBtn} ${fsrsMode === 'all' ? styles.levelActive : ''}`}
+              onClick={() => { setFsrsMode('all'); if (phase !== 'idle') restart(); }}
+            >
+              All
+            </button>
+            <button
+              className={`${styles.levelBtn} ${fsrsMode === 'new' ? styles.levelActive : ''}`}
+              onClick={() => { setFsrsMode('new'); if (phase !== 'idle') restart(); }}
+            >
+              New
+            </button>
+          </div>
+        )}
 
         {/* Mode toggle — Easy / Hard / Explore */}
         <div className={styles.settingsGroup}>
@@ -975,7 +1068,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
       {/* Quiz mode main area */}
       {!exploreMode && (
         <div className={styles.main}>
-          {phase === 'idle' && <IdleScreen pool={pool} onStart={startOrNext} />}
+          {phase === 'idle' && (
+            <IdleScreen pool={pool} onStart={startOrNext} dueCount={fsrsDueCount} fsrsMode={fsrsMode} />
+          )}
 
           {(phase === 'question' || phase === 'revealed') && current && (
             <QuizCard
@@ -1000,7 +1095,15 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
             />
           )}
 
-          {phase === 'done' && <DoneScreen session={session} reviewed={reviewed} onRestart={restart} />}
+          {phase === 'done' && (
+            <DoneScreen
+              session={session}
+              reviewed={reviewed}
+              onRestart={restart}
+              doneReason={doneReason}
+              onSwitchMode={(mode) => { setFsrsMode(mode); restart(); }}
+            />
+          )}
         </div>
       )}
     </div>
@@ -1011,7 +1114,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function IdleScreen({ pool, onStart }) {
+function IdleScreen({ pool, onStart, dueCount, fsrsMode }) {
   return (
     <div className={styles.idleScreen}>
       {pool.length === 0 ? (
@@ -1021,6 +1124,11 @@ function IdleScreen({ pool, onStart }) {
         </>
       ) : (
         <>
+          {dueCount !== null && dueCount > 0 && fsrsMode !== 'due' && (
+            <p className={styles.idleDueHint}>
+              <strong>{dueCount}</strong> card{dueCount !== 1 ? 's' : ''} due for review
+            </p>
+          )}
           <p className={styles.idleReady}>
             <strong>{pool.length}</strong> word{pool.length !== 1 ? 's' : ''} ready
           </p>
@@ -1293,19 +1401,42 @@ function RevealField({ label, value, highlight, italic }) {
   );
 }
 
-function DoneScreen({ session, reviewed, onRestart }) {
+const DONE_MESSAGES = {
+  all_caught_up: { icon: '🌟', title: 'All caught up!',         sub: 'No cards are due for review right now.' },
+  daily_limit:   { icon: '✅', title: 'Daily limit reached!',   sub: "You've introduced all new words for today." },
+  no_new_words:  { icon: '📚', title: 'No new words left',      sub: 'All words have been introduced. Switch to Due to review them.' },
+  done:          { icon: '🎉', title: 'No more words!',         sub: 'All words in your pool have been reviewed.' },
+};
+
+function DoneScreen({ session, reviewed, onRestart, doneReason, onSwitchMode }) {
+  const { icon, title, sub } = DONE_MESSAGES[doneReason] ?? DONE_MESSAGES.done;
   return (
     <div className={styles.doneScreen}>
-      <div className={styles.doneIcon}>🎉</div>
-      <h2 className={styles.doneTitle}>No more words!</h2>
-      <p className={styles.doneSub}>All words in your pool have been reviewed.</p>
-      <div className={styles.doneSummary}>
-        <SummaryStat label="Reviewed"    value={reviewed} />
-        <SummaryStat label="✅ Correct"  value={session.correct}    color="#4caf79" />
-        <SummaryStat label="❌ Wrong"    value={session.wrong}      color="#e07070" />
-        <SummaryStat label="🤔 Hesitated" value={session.notSure}   color="#e8a44a" />
-        <SummaryStat label="Best streak" value={session.bestStreak} />
-      </div>
+      <div className={styles.doneIcon}>{icon}</div>
+      <h2 className={styles.doneTitle}>{title}</h2>
+      <p className={styles.doneSub}>{sub}</p>
+
+      {/* Quick-switch to a useful mode */}
+      {doneReason === 'all_caught_up' && (
+        <button className={styles.switchModeBtn} onClick={() => onSwitchMode('new')}>
+          Switch to New words →
+        </button>
+      )}
+      {(doneReason === 'daily_limit' || doneReason === 'no_new_words') && (
+        <button className={styles.switchModeBtn} onClick={() => onSwitchMode('due')}>
+          Switch to Due cards →
+        </button>
+      )}
+
+      {reviewed > 0 && (
+        <div className={styles.doneSummary}>
+          <SummaryStat label="Reviewed"     value={reviewed} />
+          <SummaryStat label="✅ Correct"   value={session.correct}    color="#4caf79" />
+          <SummaryStat label="❌ Wrong"     value={session.wrong}      color="#e07070" />
+          <SummaryStat label="🤔 Hesitated" value={session.notSure}    color="#e8a44a" />
+          <SummaryStat label="Best streak"  value={session.bestStreak} />
+        </div>
+      )}
       <button className={styles.startBtn} onClick={onRestart}>Start over</button>
     </div>
   );

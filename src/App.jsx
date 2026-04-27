@@ -28,6 +28,7 @@ function AppShell() {
   const { session, user, loading } = useAuth();
   const [activeTab, setActiveTab] = useState('input');
   const [preferences, setPreferences] = useState(null);
+  const [quizDueCount, setQuizDueCount] = useState(null); // null = not yet loaded
   const { words, loading: vocabLoading, error, toggleStar, updateWord, addWord, removeWord } = useVocabulary();
 
   useEffect(() => {
@@ -39,6 +40,10 @@ function AppShell() {
     setPreferences(prev => prev ? { ...prev, ...changes } : prev);
     if (user?.id) updatePreferences(user.id, changes).catch(() => {});
   }, [user?.id]);
+
+  const handleQuizDueUpdate = useCallback((count) => {
+    setQuizDueCount(count);
+  }, []);
 
   if (loading) {
     return (
@@ -86,6 +91,7 @@ function AppShell() {
         onTabChange={setActiveTab}
         user={user}
         onSignOut={() => supabase.auth.signOut()}
+        quizDueCount={quizDueCount}
       />
       <main className={styles.main}>
         <Suspense fallback={<div className={styles.tabSpinner}><div className={styles.loadingSpinner} /></div>}>
@@ -97,7 +103,7 @@ function AppShell() {
             <InputPage words={words} onAddWord={addWord} onRemoveWord={removeWord} onUpdateWord={updateWord} preferences={preferences} onUpdatePreferences={handleUpdatePreferences} onNavigate={setActiveTab} />
           )}
           {activeTab === 'quiz' && (
-            <QuizPage words={words} onUpdateWord={updateWord} onAddWord={addWord} preferences={preferences} />
+            <QuizPage words={words} onUpdateWord={updateWord} onAddWord={addWord} preferences={preferences} onDueCountChange={handleQuizDueUpdate} />
           )}
           {activeTab === 'settings' && <SettingsPage words={words} user={user} preferences={preferences} onUpdatePreferences={handleUpdatePreferences} />}
           {activeTab === 'admin'    && <AdminPage user={user} />}
