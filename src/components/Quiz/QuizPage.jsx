@@ -74,6 +74,19 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+// Diacritics-only match — same letters, accent differences only.
+// Used for the related_words tier: no Levenshtein, no article stripping.
+// "espanol" matches "español" but "espaol" does not match "español".
+function matchesAccentsOnly(a, b) {
+  return stripDiacritics(a.toLowerCase().trim()) === stripDiacritics(b.toLowerCase().trim());
+}
+
+// Parse the related_words string (comma-separated) into individual word tokens.
+function parseRelatedWords(relatedWords) {
+  if (!relatedWords || typeof relatedWords !== 'string') return [];
+  return relatedWords.split(/[,;]/).map(s => s.trim()).filter(Boolean);
+}
+
 // NOTE: Future fill-in-the-blanks / grammar mode must NOT use this function —
 // articles are part of the graded answer there.
 function answersMatch(input, correct, langCode = null) {
@@ -641,13 +654,16 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences }
   );
 
   // Hard mode typed-answer check. Fires interference log on wrong answer (v1 stub).
+  // Cascade: exact/Levenshtein → word_alternatives → related_words (diacritics-only).
   function handleCheckAnswer(typed) {
     if (!typed.trim() || !current) return;
     const lang = current.word_language || preferences?.learning_language || null;
     const isCorrect =
       answersMatch(typed, current.word, lang) ||
       (Array.isArray(current.word_alternatives) &&
-        current.word_alternatives.some(alt => answersMatch(typed, alt, lang)));
+        current.word_alternatives.some(alt => answersMatch(typed, alt, lang))) ||
+      parseRelatedWords(current.related_words)
+        .some(rw => matchesAccentsOnly(typed, rw));
 
     if (!isCorrect) {
       const lookupLang = current.word_language || preferences?.learning_language || 'es';

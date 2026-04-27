@@ -74,6 +74,10 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
     }
   }
 
+  function handleRetentionChange(pct) {
+    onUpdatePreferences({ desired_retention: pct / 100 });
+  }
+
   function handleExportCSV() {
     logEvent('csv_export', { word_count: words.length });
     const csv = buildCSV(words);
@@ -182,6 +186,47 @@ export default function SettingsPage({ words, user, preferences, onUpdatePrefere
                   )}
                 </div>
               </>
+            ) : (
+              <div className={styles.row}>
+                <span className={styles.rowDesc}>Loading…</span>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Quiz */}
+        <section className={styles.section}>
+          <h2 className={styles.sectionTitle}>Quiz</h2>
+          <div className={styles.card}>
+            {preferences ? (
+              <div className={styles.sliderRow}>
+                <div className={styles.sliderHeader}>
+                  <span className={styles.rowLabel}>Review Intensity</span>
+                  <span className={styles.retentionValue}>
+                    {Math.round((preferences.desired_retention ?? 0.80) * 100)}%
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="70"
+                  max="95"
+                  step="5"
+                  value={Math.round((preferences.desired_retention ?? 0.80) * 100)}
+                  onChange={e => handleRetentionChange(Number(e.target.value))}
+                  className={styles.retentionSlider}
+                />
+                <div className={styles.sliderTicks}>
+                  <span>70%</span>
+                  <span>75%</span>
+                  <span>80%</span>
+                  <span>85%</span>
+                  <span>90%</span>
+                  <span>95%</span>
+                </div>
+                <p className={styles.retentionLegend}>
+                  Lower = fewer reviews, some forgetting allowed. Higher = more frequent reviews, stronger long-term recall.
+                </p>
+              </div>
             ) : (
               <div className={styles.row}>
                 <span className={styles.rowDesc}>Loading…</span>

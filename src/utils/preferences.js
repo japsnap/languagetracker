@@ -21,6 +21,7 @@ const DEFAULT_PREFERENCES = {
   primary_language: 'en',
   learning_language: 'es',
   secondary_languages: [],
+  desired_retention: 0.80,
 };
 
 export async function getPreferences(userId) {

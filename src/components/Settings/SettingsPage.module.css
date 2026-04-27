@@ -190,3 +190,49 @@
   font-size: 0.8rem;
   color: var(--warning);
 }
+
+/* ── Retention slider ────────────────────────────────────────────────────────── */
+
+.sliderRow {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.sliderHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.retentionValue {
+  font-size: 1.1rem;
+  font-weight: 700;
+  font-family: var(--font-heading);
+  color: var(--text-primary);
+  min-width: 3rem;
+  text-align: right;
+}
+
+.retentionSlider {
+  width: 100%;
+  cursor: pointer;
+  accent-color: var(--text-primary);
+}
+
+.sliderTicks {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0 1px;
+}
+
+.retentionLegend {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  margin: 0;
+  padding-top: 0.15rem;
+}
