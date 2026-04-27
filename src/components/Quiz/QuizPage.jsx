@@ -251,8 +251,9 @@ function pickNextFsrs(pool, stateMap, lastShownId, newLimitConfig = {}, fsrsMode
 
   // ── 'due' mode: only cards that are actually due right now ────────────────
   if (fsrsMode === 'due') {
-    const dueLearning = tagged.filter(t => t.state === 'learning' && t.due <= now).sort((a, b) => a.due - b.due);
-    if (dueLearning.length > 0) return dueLearning[0].word;
+    // Strict definition: state IN ('review','relearning') AND due_at <= now().
+    // Matches the badge count exactly. Learning cards are excluded — they are
+    // mid-session in-flight steps and appear in 'all' mode (tier 1) instead.
     const dueRelearning = tagged.filter(t => t.state === 'relearning' && t.due <= now).sort((a, b) => a.due - b.due);
     if (dueRelearning.length > 0) return dueRelearning[0].word;
     const dueReview = tagged.filter(t => t.state === 'review' && t.due <= now).sort((a, b) => a.due - b.due);
