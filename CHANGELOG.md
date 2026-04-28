@@ -1,5 +1,44 @@
 # Changelog
 
+## 2026-04-28 (FSRS Stats page)
+
+### Summary cards replaced
+
+Legacy top-row cards (Mastered, Never Reviewed, Accuracy Rate, Avg Memory Score) replaced with FSRS-aware metrics. `vocabulary.mastered` column and manual "Mark as mastered" button are unchanged.
+
+**Mode toggle** (Easy / Hard, default Easy) at top-right of page header. All FSRS cards and new charts re-query on toggle. No "Combined" mode.
+
+**Tier 1 — prominent cards:**
+- Total Words — mode-independent vocabulary count
+- In Review — `state='review'` for selected mode
+- Learning — `state IN ('learning','relearning')` for selected mode
+- Untouched — words with no FSRS row OR `state='new' AND review_count=0`; computed as `words.length - touched_word_ids.size` so words never in any quiz session are correctly counted
+- Due Today — `state IN ('review','relearning') AND due_at < tomorrow_midnight_local` (timezone-aware, includes overdue cards)
+
+**Tier 2 — secondary metrics (lighter visual weight):**
+- Comfortable — `state='review' AND stability >= 21`; SQL: `SELECT count(*) FROM word_reviews_state WHERE user_id=? AND mode='easy' AND state='review' AND stability >= 21`
+- Avg Stability — mean stability across review cards, rounded to 1 decimal, shown as `Xd`
+- Reviews Today — `review_log` rows with `reviewed_at >= today_midnight_local` for selected mode
+- Accuracy Today — `grade != 'again'` / total today; shown as %; colour-coded green ≥70% / red <70%
+
+### New charts (above existing charts)
+- **Chart A — FSRS State Distribution**: bar chart of new/learning/relearning/review counts for selected mode
+- **Chart B — Stability Distribution**: histogram of review-card stability (bins: <1d, 1–7d, 7–30d, 30–90d, 90d+)
+- **Chart C — Reviews per Day**: last 30 days bar chart from `review_log`, filtered by mode; x-axis date in user timezone
+
+### Unchanged
+- Words by Level chart
+- Total Vocabulary Over Time chart (cumulative)
+- Hardest Words and Most Reviewed charts
+- Quiz Performance by Mode section (legacy user_events)
+- All timezone logic: `getTodayMidnightUTC` mirrors QuizPage helper (comment notes extraction point)
+
+### Data fetching
+- `word_reviews_state`: fetched on mount + mode change; all metrics computed client-side
+- `review_log`: last 30 days, fetched on mount + mode change; today slice computed client-side
+- Both use cancellation flag pattern to avoid stale-state from race conditions on fast mode switching
+- `preferences` prop added to StatsPage (App.jsx); `timezone` sourced from `user_preferences.timezone`
+
 ## 2026-04-28 (FSRS surfacing in Quiz UI)
 
 - **FSRS Queue toggle (Due / All / New)** — New toggle in the Quiz settings strip (leftmost position). Session-only; not persisted to `user_preferences`.

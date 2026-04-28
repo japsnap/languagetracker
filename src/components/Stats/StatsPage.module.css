@@ -20,7 +20,66 @@
   color: var(--text-primary);
 }
 
-/* ── Summary cards ───────────────────────────────────────────────────────────── */
+/* ── Title row + mode toggle ─────────────────────────────────────────────────── */
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.modeToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.modeToggleLabel {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.modeBtn {
+  padding: 0.3rem 0.85rem;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.modeBtn:hover { color: var(--text-primary); border-color: var(--text-primary); }
+.modeBtnActive {
+  background: var(--text-primary);
+  border-color: var(--text-primary);
+  color: #fff;
+}
+
+/* ── Tier 1: prominent FSRS snapshot cards ───────────────────────────────────── */
+
+.tier1Grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 1rem;
+}
+
+/* ── Tier 2: secondary metrics, lighter weight ───────────────────────────────── */
+
+.tier2Grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+}
+
+/* ── Summary cards (legacy — keep for backward compat) ──────────────────────── */
 
 .summaryGrid {
   display: grid;
@@ -41,6 +100,20 @@
 }
 .statCard:hover { box-shadow: var(--shadow-md); }
 
+/* Tier 1 "Total Words" emphasis */
+.statCardProminent {
+  border-left: 3px solid var(--text-primary);
+}
+
+/* Tier 2: lighter visual weight */
+.statCardSm {
+  background: var(--bg-elevated);
+  border-color: var(--border);
+  box-shadow: none;
+  padding: 0.85rem 1rem;
+}
+.statCardSm:hover { box-shadow: var(--shadow-sm); }
+
 .statLabel {
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -52,6 +125,15 @@
 .statValue {
   font-family: var(--font-heading);
   font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.1;
+}
+
+/* Tier 2 value — smaller font */
+.statValueSm {
+  font-family: var(--font-heading);
+  font-size: 1.5rem;
   font-weight: 700;
   color: var(--text-primary);
   line-height: 1.1;
@@ -177,12 +259,21 @@
 
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
 
+@media (max-width: 900px) {
+  .tier1Grid { grid-template-columns: repeat(3, 1fr); }
+  .tier2Grid { grid-template-columns: repeat(2, 1fr); }
+}
+
 @media (max-width: 700px) {
   .chartsRow { grid-template-columns: 1fr; }
   .modeGrid  { grid-template-columns: 1fr; }
   .summaryGrid { grid-template-columns: 1fr 1fr; }
+  .tier1Grid { grid-template-columns: repeat(2, 1fr); }
+  .tier2Grid { grid-template-columns: repeat(2, 1fr); }
 }
 
 @media (max-width: 400px) {
   .summaryGrid { grid-template-columns: 1fr; }
+  .tier1Grid   { grid-template-columns: 1fr 1fr; }
+  .tier2Grid   { grid-template-columns: 1fr 1fr; }
 }

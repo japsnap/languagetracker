@@ -98,7 +98,7 @@ function AppShell() {
           {activeTab === 'review' && (
             <ReviewPage words={words} onToggleStar={toggleStar} onUpdateWord={updateWord} preferences={preferences} />
           )}
-          {activeTab === 'stats' && <StatsPage words={words} />}
+          {activeTab === 'stats' && <StatsPage words={words} preferences={preferences} />}
           {activeTab === 'input' && (
             <InputPage words={words} onAddWord={addWord} onRemoveWord={removeWord} onUpdateWord={updateWord} preferences={preferences} onUpdatePreferences={handleUpdatePreferences} onNavigate={setActiveTab} />
           )}
