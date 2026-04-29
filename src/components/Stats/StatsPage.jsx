@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { memorizationLevel } from '../../utils/vocabulary';
 import { supabase } from '../../utils/supabase';
+import { useAuth } from '../Auth/AuthProvider';
 import styles from './StatsPage.module.css';
 
 const LEVEL_FILL = { A1: '#2E7D32', A2: '#81C784', B1: '#1565C0', B2: '#64B5F6', C1: '#7B1FA2', C2: '#E91E63' };
@@ -101,6 +102,7 @@ function computeQuizModeStats(events) {
 // ---------------------------------------------------------------------------
 
 export default function StatsPage({ words, preferences }) {
+  const { user } = useAuth();
   const [fsrsMode, setFsrsMode] = useState('easy'); // 'easy' | 'hard'
   const [fsrsRows, setFsrsRows]         = useState(null); // word_reviews_state, null = loading
   const [reviewLogRows, setReviewLogRows] = useState(null); // review_log last 30 days
@@ -111,55 +113,58 @@ export default function StatsPage({ words, preferences }) {
 
   // ── Fetch word_reviews_state for selected mode ───────────────────────────
   useEffect(() => {
+    if (!user?.id) { setFsrsRows(null); return; }
     let cancelled = false;
     setFsrsRows(null);
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || cancelled) return;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('word_reviews_state')
         .select('word_id, state, review_count, stability, due_at')
         .eq('user_id', user.id)
         .eq('mode', fsrsMode);
-      if (!cancelled) setFsrsRows(data || []);
-    })().catch(() => { if (!cancelled) setFsrsRows([]); });
+      if (cancelled) return;
+      if (error) { console.error('Stats word_reviews_state:', error); setFsrsRows([]); return; }
+      setFsrsRows(data || []);
+    })().catch(err => { if (!cancelled) { console.error('Stats word_reviews_state (catch):', err); setFsrsRows([]); } });
     return () => { cancelled = true; };
-  }, [fsrsMode]);
+  }, [user?.id, fsrsMode]);
 
   // ── Fetch review_log — last 30 days, selected mode ──────────────────────
   useEffect(() => {
+    if (!user?.id) { setReviewLogRows(null); return; }
     let cancelled = false;
     setReviewLogRows(null);
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || cancelled) return;
       const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('review_log')
         .select('reviewed_at, grade')
         .eq('user_id', user.id)
         .eq('mode', fsrsMode)
         .gte('reviewed_at', since);
-      if (!cancelled) setReviewLogRows(data || []);
-    })().catch(() => { if (!cancelled) setReviewLogRows([]); });
+      if (cancelled) return;
+      if (error) { console.error('Stats review_log:', error); setReviewLogRows([]); return; }
+      setReviewLogRows(data || []);
+    })().catch(err => { if (!cancelled) { console.error('Stats review_log (catch):', err); setReviewLogRows([]); } });
     return () => { cancelled = true; };
-  }, [fsrsMode]);
+  }, [user?.id, fsrsMode]);
 
   // ── Fetch legacy quiz events (mode comparison section) ───────────────────
   useEffect(() => {
+    if (!user?.id) { setQuizEvents(null); return; }
     let cancelled = false;
     (async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user || cancelled) return;
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('user_events')
         .select('metadata')
         .eq('event_type', 'quiz_answer')
         .eq('user_id', user.id);
-      if (!cancelled) setQuizEvents(data || []);
-    })().catch(() => { if (!cancelled) setQuizEvents([]); });
+      if (cancelled) return;
+      if (error) { console.error('Stats user_events:', error); setQuizEvents([]); return; }
+      setQuizEvents(data || []);
+    })().catch(err => { if (!cancelled) { console.error('Stats user_events (catch):', err); setQuizEvents([]); } });
     return () => { cancelled = true; };
-  }, []);
+  }, [user?.id]);
 
   const modeStats = useMemo(
     () => (quizEvents ? computeQuizModeStats(quizEvents) : null),
