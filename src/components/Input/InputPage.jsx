@@ -43,6 +43,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const [previewTags,   setPreviewTags]         = useState([]);
   const abortRef       = useRef(null);
   const autoSaveTimer  = useRef(null);
+  const searchInputRef = useRef(null);
 
   // ── Language derivations ──────────────────────────────────────────────────────
 
@@ -179,6 +180,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
       };
       setFields(wordFields);
       setPhase('preview');
+      setInputWord('');
+      searchInputRef.current?.focus();
       fireSecondaryLookups(term.toLowerCase().trim(), actualInputLang, secondaryLangs);
 
       if (AUTO_SAVE_ENABLED) {
@@ -344,6 +347,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
         {/* Search bar */}
         <div className={styles.searchRow}>
           <input
+            ref={searchInputRef}
             className={styles.searchInput}
             type="text"
             placeholder={placeholder}
