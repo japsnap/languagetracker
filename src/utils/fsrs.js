@@ -162,7 +162,13 @@ export function scheduleReview({
 }) {
   let card;
 
-  if (!currentState) {
+  // Treat as a fresh card if: no prior state, state='new', or stability is absent.
+  // Backfilled word_reviews_state rows have state='new' with null stability/difficulty —
+  // correct data shape for an untouched card, but ts-fsrs requires non-null DSR values
+  // when reconstructing from a DB row. createEmptyCard is the correct path for these.
+  const isUntouched = !currentState || currentState.state === 'new' || currentState.stability == null;
+
+  if (isUntouched) {
     card = createEmptyCard(now);
   } else {
     const lastReview = currentState.last_review_at

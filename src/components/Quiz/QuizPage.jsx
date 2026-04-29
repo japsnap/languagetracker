@@ -515,7 +515,6 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   // All state read from refs — safe to call from useCallback closures.
   async function _writeFsrsResult(word, type, responseTimeMs) {
     const uid = userIdRef.current;
-    console.log('[FSRS] _writeFsrsResult called — word:', word?.word, 'type:', type, 'uid:', uid ? '✓' : 'null');
     if (!uid) return;
 
     const mode = quizModeRef.current;
@@ -528,11 +527,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     let stateAfter;
     try {
       stateAfter = scheduleReview({ currentState, grade, desiredRetention, weights });
-    } catch (err) {
-      console.error('[FSRS] scheduleReview threw — word:', word.word, 'grade:', grade,
-        'desiredRetention:', desiredRetention, 'currentState:', currentState, 'error:', err?.message);
-      return;
-    }
+    } catch { return; }
 
     // Upsert word_reviews_state
     let updatedRow = null;
