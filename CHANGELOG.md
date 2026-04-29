@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-04-29 (schema cleanup + FSRS write fix)
+
+- **FIX: FSRS writes silently blocked for all backfilled words** — `scheduleReview` in `src/utils/fsrs.js` now treats any `currentState` with `state='new'` or null `stability` as an untouched card (routes to `createEmptyCard`). Backfilled `word_reviews_state` rows have `state='new'` with null `stability`/`difficulty` — correct DB shape, but ts-fsrs 5.x throws `"Invalid memory state"` when those nulls are reconstructed into a card object. The silent `catch { return }` in `_writeFsrsResult` swallowed the error, blocking all FSRS writes for 1818 words. New words added after migration were unaffected (no pre-existing row → `currentState=null` → correct path already taken).
+
+- **Schema: `word_cache.direction` column dropped** — `ALTER TABLE word_cache DROP COLUMN IF EXISTS direction;` (run in Supabase SQL Editor). The `direction` column predates the three-role language system (`input_language` / `learning_language` / `primary_language`) and has been unused since migration `001_word_cache_three_role.sql`. Full codebase search confirmed zero active references: no `.eq('direction', ...)`, no select, no insert/upsert payload. Only inert references remain: a `DROP CONSTRAINT IF EXISTS` in the already-run migration SQL, and a historical comment in `cache.js`.
+
 ## 2026-04-28 (FSRS Stats page)
 
 ### Summary cards replaced
