@@ -692,6 +692,64 @@
 }
 .miniCardMoreBtn:hover { border-color: var(--border-strong); color: var(--text-secondary); }
 
+.miniCardSaveBtn {
+  margin-top: 0.6rem;
+  width: 100%;
+  background: var(--text-primary);
+  color: var(--bg-page);
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.74rem;
+  font-family: var(--font-body);
+  font-weight: 700;
+  padding: 0.3rem 0.75rem;
+  cursor: pointer;
+  letter-spacing: 0.03em;
+  transition: opacity 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.75rem;
+}
+.miniCardSaveBtn:hover:not(:disabled) { opacity: 0.8; }
+.miniCardSaveBtn:disabled { opacity: 0.5; cursor: default; }
+
+.miniCardSavedBar {
+  margin-top: 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.25rem 0.5rem;
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+}
+
+.miniCardSavedText {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.miniCardSaveError {
+  font-size: 0.72rem;
+  color: var(--color-error, #c62828);
+}
+
+.miniCardUndoBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.68rem;
+  font-family: var(--font-body);
+  font-weight: 600;
+  padding: 0.1rem 0.4rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.miniCardUndoBtn:hover { border-color: var(--border-strong); color: var(--text-secondary); }
+
 /* ── Language chip selector ──────────────────────────────────────────────────── */
 
 .langSelector {

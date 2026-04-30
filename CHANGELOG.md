@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-05-01 (polyglot save — secondary mini-card save button)
+
+- **Save button on secondary mini-cards** — Each secondary language card now has a Save button. Clicking creates a real vocabulary row for that language with `tags=['polyglot']` and `lookup_session_id` shared with the primary auto-save. States: idle → saving (spinner) → Saved ✓ + 5s undo. Button is absent when: the word already exists in vocab for that language; the secondary language equals the user's primary language (dedup guard); or the card is still loading.
+
+- **`lookup_session_id` on primary auto-save** — Primary card auto-save now includes `lookup_session_id` (a `crypto.randomUUID()` generated per lookup). Secondary saves from the same lookup share this UUID, enabling SQL grouping of all words added in one session. Schema: `ALTER TABLE vocabulary ADD COLUMN IF NOT EXISTS lookup_session_id UUID DEFAULT NULL;` + index on `(lookup_session_id)`.
+
+- **Pre-populated saved state** — On render, secondary cards check `words` for an existing entry matching `(data.word, word_language)`. If found, the button shows "Saved ✓" immediately without the undo window (it was saved in a prior session).
+
+- **Undo** — 5-second undo window after secondary save (matches primary card pattern). Deletes the vocabulary row via `onRemoveWord`; reverts button to Save.
+
+- **Review page: romanization priority** — `WordRow` now suppresses `romanization` when `kana_reading` is present (Japanese kana takes priority). Both fields remain inline on the main row (always visible, not just in expanded view). For all other non-Latin scripts (ko, zh, ur, hi), romanization is shown when present.
+
 ## 2026-04-29 (secondary lookup convergence)
 
 - **Secondary mini-cards now use the primary lookup path** — `lookupSecondary` in `src/utils/anthropic.js` now delegates to `lookupWordSingle` with the correct role mapping (`input_language=sourceLang`, `learning_language=targetLang`, `primary_language=meaningLang`). The dedicated `buildSecondaryPrompt` function and `mode='secondary'` API handler branch have been removed from `api/anthropic.js`. Secondary lookups now produce full vocabulary cards: `word`, `word_alternatives`, `meanings_array`, `recommended_level`, `base_form`, `romanization`/`kana_reading` — identical schema to primary lookups. Old secondary-mode cache rows (keyed under `mode='secondary'`) are inert; new rows are written under `mode='single'` and are shared with the primary lookup cache.

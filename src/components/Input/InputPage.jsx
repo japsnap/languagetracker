@@ -38,12 +38,14 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const [duplicate, setDuplicate]               = useState(null);
   const [sessionAdded, setSessionAdded]         = useState([]);
   const [savedFlash, setSavedFlash]             = useState('');
-  const [secondaryResults, setSecondaryResults] = useState({}); // { [langCode]: { status, data } }
-  const [autoSaveState, setAutoSaveState]       = useState(null); // null | { id, word }
-  const [previewTags,   setPreviewTags]         = useState([]);
-  const abortRef       = useRef(null);
-  const autoSaveTimer  = useRef(null);
-  const searchInputRef = useRef(null);
+  const [secondaryResults, setSecondaryResults]       = useState({}); // { [langCode]: { status, data } }
+  const [secondarySaveStates, setSecondarySaveStates] = useState({}); // { [langCode]: { status: 'idle'|'saving'|'saved'|'error', id: uuid|null } }
+  const [autoSaveState, setAutoSaveState]             = useState(null); // null | { id, word }
+  const [previewTags,   setPreviewTags]               = useState([]);
+  const abortRef           = useRef(null);
+  const autoSaveTimer      = useRef(null);
+  const searchInputRef     = useRef(null);
+  const lookupSessionIdRef = useRef(null); // stable uuid per lookup, shared by primary + secondary saves
 
   // ── Language derivations ──────────────────────────────────────────────────────
 
@@ -81,9 +83,11 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     setCandidates([]);
     setSavedIndices(new Set());
     setSecondaryResults({});
+    setSecondarySaveStates({});
     clearTimeout(autoSaveTimer.current);
     setAutoSaveState(null);
     setPreviewTags([]);
+    lookupSessionIdRef.current = null;
     if (abortRef.current) abortRef.current.abort();
   }
 
@@ -121,6 +125,40 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
 
   // Cleanup timer on unmount
   useEffect(() => () => clearTimeout(autoSaveTimer.current), []);
+
+  // ── Secondary save handlers ───────────────────────────────────────────────────
+
+  async function handleSaveSecondary(langCode, data) {
+    setSecondarySaveStates(prev => ({ ...prev, [langCode]: { status: 'saving', id: null } }));
+    try {
+      const wordData = {
+        ...aiResultToWordFields(data),
+        word_language:      langCode,
+        date_added:         localToday(),
+        last_reviewed:      null,
+        total_attempts:     0,
+        error_counter:      0,
+        correct_streak:     0,
+        starred:            false,
+        mastered:           false,
+        scene:              null,
+        tags:               ['polyglot'],
+        lookup_session_id:  lookupSessionIdRef.current,
+      };
+      const saved = await onAddWord(wordData);
+      setSecondarySaveStates(prev => ({ ...prev, [langCode]: { status: 'saved', id: saved.id } }));
+    } catch (err) {
+      console.error('[secondary-save]', err?.message);
+      setSecondarySaveStates(prev => ({ ...prev, [langCode]: { status: 'error', id: null } }));
+    }
+  }
+
+  function handleUndoSecondary(langCode) {
+    const state = secondarySaveStates[langCode];
+    if (!state?.id) return;
+    onRemoveWord(state.id);
+    setSecondarySaveStates(prev => ({ ...prev, [langCode]: { status: 'idle', id: null } }));
+  }
 
   // ── Secondary lookups ─────────────────────────────────────────────────────────
   // Always fire with the ORIGINAL input word (not the learning-language output),
@@ -160,12 +198,16 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     abortRef.current = controller;
     const timeoutId = setTimeout(() => controller.abort(), 15_000);
 
+    // New session ID for this lookup — shared by primary auto-save and any secondary saves
+    lookupSessionIdRef.current = crypto.randomUUID();
+
     setPhase('loading');
     setErrorMsg('');
     setDuplicate(null);
     setSavedIndices(new Set());
     setCandidates([]);
     setSecondaryResults({});
+    setSecondarySaveStates({});
 
     try {
       const result = await lookupWordSingle(term, actualInputLang, learningLang, primaryLang, controller.signal);
@@ -187,15 +229,16 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
       if (AUTO_SAVE_ENABLED) {
         const wordData = {
           ...wordFields,
-          word_language:  learningLang,
-          date_added:     localToday(),
-          last_reviewed:  null,
-          total_attempts: 0,
-          error_counter:  0,
-          correct_streak: 0,
-          starred:        false,
-          mastered:       false,
-          scene:          null,
+          word_language:      learningLang,
+          date_added:         localToday(),
+          last_reviewed:      null,
+          total_attempts:     0,
+          error_counter:      0,
+          correct_streak:     0,
+          starred:            false,
+          mastered:           false,
+          scene:              null,
+          lookup_session_id:  lookupSessionIdRef.current,
         };
         handleAutoSave(wordData);
       }
@@ -440,6 +483,11 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
                 results={secondaryResults}
                 availableToAdd={availableToAdd}
                 onAddLanguage={handleAddSecondaryLanguage}
+                words={words}
+                saveStates={secondarySaveStates}
+                onSave={handleSaveSecondary}
+                onUndo={handleUndoSecondary}
+                primaryLang={primaryLang}
               />
             )}
           </div>
@@ -474,7 +522,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
 
 // ── Secondary column ──────────────────────────────────────────────────────────
 
-function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguage }) {
+function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguage, words, saveStates, onSave, onUndo, primaryLang }) {
   const canAdd = secondaryLangs.length < 4 && availableToAdd.length > 0;
 
   return (
@@ -482,8 +530,26 @@ function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguag
       {secondaryLangs.map(code => {
         const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
         if (!lang) return null;
+        const entry = results[code];
+        const data  = entry?.data;
+        // Pre-populate saved state if this word already exists in user's vocab for this language
+        const alreadySaved = !!(data?.word && words.some(
+          w => w.word?.toLowerCase() === data.word.toLowerCase() && w.word_language === code
+        ));
+        const saveState = saveStates[code] || { status: 'idle', id: null };
+        // Don't allow save if secondary lang equals primary lang (words would dedup against existing vocab)
+        const canSave = entry?.status === 'done' && !!data?.word && code !== primaryLang && !alreadySaved;
         return (
-          <SecondaryMiniCard key={code} lang={lang} entry={results[code]} />
+          <SecondaryMiniCard
+            key={code}
+            lang={lang}
+            entry={entry}
+            alreadySaved={alreadySaved}
+            saveState={saveState}
+            canSave={canSave}
+            onSave={() => onSave(code, data)}
+            onUndo={() => onUndo(code)}
+          />
         );
       })}
       {canAdd && (
@@ -510,11 +576,27 @@ const SECONDARY_EXTRA_FIELDS = [
   { key: 'other_useful_notes',  label: 'Notes' },
 ];
 
-function SecondaryMiniCard({ lang, entry }) {
-  const [expanded, setExpanded] = useState(false);
+function SecondaryMiniCard({ lang, entry, alreadySaved, saveState, canSave, onSave, onUndo }) {
+  const [expanded,  setExpanded]  = useState(false);
+  const [showUndo,  setShowUndo]  = useState(false);
+  const undoTimerRef = useRef(null);
 
   const data = entry?.data;
   const hasExtra = data && SECONDARY_EXTRA_FIELDS.some(f => data[f.key]);
+
+  // 5-second undo window after a successful save
+  useEffect(() => {
+    if (saveState?.status === 'saved') {
+      setShowUndo(true);
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = setTimeout(() => setShowUndo(false), 5000);
+    } else {
+      setShowUndo(false);
+    }
+    return () => clearTimeout(undoTimerRef.current);
+  }, [saveState?.status]);
+
+  const isSaved = alreadySaved || saveState?.status === 'saved';
 
   return (
     <div className={styles.miniCard} translate="no">
@@ -573,6 +655,28 @@ function SecondaryMiniCard({ lang, entry }) {
               {expanded ? 'Show less ▲' : 'Show more ▼'}
             </button>
           )}
+          {/* Save / Saved bar */}
+          {isSaved ? (
+            <div className={styles.miniCardSavedBar}>
+              <span className={styles.miniCardSavedText}>Saved ✓</span>
+              {showUndo && (
+                <button className={styles.miniCardUndoBtn} onClick={onUndo}>Undo</button>
+              )}
+            </div>
+          ) : saveState?.status === 'error' ? (
+            <div className={styles.miniCardSavedBar}>
+              <span className={styles.miniCardSaveError}>Save failed — retry?</span>
+              <button className={styles.miniCardSaveBtn} onClick={onSave}>Retry</button>
+            </div>
+          ) : canSave ? (
+            <button
+              className={styles.miniCardSaveBtn}
+              onClick={onSave}
+              disabled={saveState?.status === 'saving'}
+            >
+              {saveState?.status === 'saving' ? <span className={styles.miniSpinner} /> : 'Save'}
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>

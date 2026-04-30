@@ -105,8 +105,8 @@ export default function WordRow({
           {showLangBadge && word.word_language && (
             <span className={styles.langBadge}>{word.word_language.toUpperCase()}</span>
           )}
-          {word.kana_reading   && <span className={styles.wordKana}>{word.kana_reading}</span>}
-          {word.romanization   && <span className={styles.wordRomanization}>{word.romanization}</span>}
+          {word.kana_reading && <span className={styles.wordKana}>{word.kana_reading}</span>}
+          {!word.kana_reading && word.romanization && <span className={styles.wordRomanization}>{word.romanization}</span>}
         </td>
         <td className={styles.posCell}>{word.part_of_speech}</td>
         <td className={styles.meaningCell}>{word.meaning}</td>
