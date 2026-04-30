@@ -1,237 +1,388 @@
-# LanguageTracker Beta
+# LanguageTracker
 
-A personal Spanish vocabulary learning app with AI-powered word lookup, a spaced-repetition quiz, and progress tracking.
+A multilingual vocabulary learning app with AI-powered word lookup, FSRS spaced-repetition scheduling, and multi-language support. Built for personal use; deployed on Vercel.
 
 ---
 
 ## Features
 
-- **Review tab** — searchable, sortable table of all words with inline expansion. Filter by level, scene, or starred status. Bulk-tag words with a scene.
-- **Stats tab** — progress dashboard with accuracy rate, mastery %, level breakdown charts, hardest words, and most reviewed words.
-- **Quiz tab** — weighted random quiz (lower memorization % = appears more often). Tracks correct streaks, auto-masters words at streak 5. Change-answer support before moving on.
-- **Input tab** — type a Spanish word, Claude AI fills in meaning, example, level, and notes. Editable before saving. Duplicate detection and session undo.
-- **Persistent storage** — all data lives in `localStorage`; no backend required for personal use.
+**Input tab** — Look up any word using Claude AI. The result auto-saves to your vocabulary with full metadata (meaning, example, level, alternatives, romanization for non-Latin scripts). Secondary language mini-cards show the same word in up to 4 additional languages simultaneously, each saveable as an independent vocabulary entry.
+
+**Review tab** — Searchable, sortable table of all vocabulary. Filter by level (A1–C2), language, part of speech (word/phrase/idiom), scene, tags, and starred status. Inline expansion shows full word details, scene assignment, tag editor, and AI insights (etymology, collocations, cultural notes).
+
+**Quiz tab** — Two modes:
+- **Easy mode**: recognition; tap 🎯 ✅ ❌ 🤷 to self-assess
+- **Hard mode**: typed production; accepts the target word or any listed synonym (Levenshtein ≤1 tolerance)
+
+Both modes use FSRS (Free Spaced Repetition Scheduler) to schedule reviews. A queue toggle (Due / All / New) controls which cards appear. A due-today badge on the nav tab shows overdue card count.
+
+**Explore mode** (within Quiz tab) — Flip-card drill for words you haven't saved yet. Spanish words follow a curated A1–C2 seed list; other languages use AI-generated random words.
+
+**Stats tab** — FSRS metrics (In Review, Learning, Untouched, Due Today, Avg Stability, Accuracy Today), state distribution charts, stability histogram, reviews-per-day chart (30 days), and legacy charts (words by level, vocabulary over time, hardest words).
+
+**Settings tab** — Language preferences (learning language, primary language, secondary languages), CSV export of full vocabulary.
 
 ---
 
 ## Tech Stack
 
-- React + Vite
-- CSS Modules (Latin-themed warm palette, Playfair Display + Inter fonts)
-- Recharts (stats charts)
-- Anthropic Claude API (`claude-sonnet-4-20250514`) for word lookup
+| Layer | Technology |
+|-------|-----------|
+| Frontend | React 19, Vite 8, CSS Modules, Recharts |
+| Database | Supabase (PostgreSQL + RLS) |
+| Auth | Google OAuth via Supabase Auth |
+| AI | Anthropic Claude claude-sonnet-4-20250514 |
+| TTS | Google Cloud TTS (es/pt/it/hi/ur) + Web Speech API (other languages) |
+| FSRS | ts-fsrs 5.3.2 |
+| Hosting | Vercel (serverless functions + static frontend) |
+| PWA | Web App Manifest + service worker |
 
 ---
 
-## Setup
+## Supported Languages
+
+EN · ES · JA · DE · KO · ZH · UR · HI · PT · FR · IT
+
+---
+
+## Local Development
+
+### Prerequisites
+- Node.js 18+
+- A Supabase project (see Database Setup below)
+- An Anthropic API key
+- A Google Cloud TTS API key (optional; TTS falls back to Web Speech API without it)
+
+### Setup
 
 ```bash
-# 1. Clone the repo
-git clone <your-repo-url>
-cd spanishapp
-
-# 2. Install dependencies
+git clone https://github.com/japsnap/languagetracker.git
+cd languagetracker
 npm install
-
-# 3. Add your API key
 cp .env.example .env
-# Edit .env and set: VITE_ANTHROPIC_API_KEY=sk-ant-...
-
-# 4. Start dev server
+# Fill in .env — see Environment Variables below
 npm run dev
 ```
 
-Open http://localhost:5173 (or the port shown in your terminal).
+Open http://localhost:5173
+
+### Environment Variables
+
+| Variable | Scope | Required | Description |
+|----------|-------|----------|-------------|
+| `VITE_SUPABASE_URL` | Client + Server | Yes | Supabase project URL |
+| `VITE_SUPABASE_ANON_KEY` | Client + Server | Yes | Supabase anon/public key |
+| `ANTHROPIC_API_KEY` | Server only | Yes | Anthropic API key — never set with VITE_ prefix |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server only | Yes | Supabase service-role key (bypasses RLS for admin/seed writes) |
+| `GOOGLE_TTS_API_KEY` | Server only | Optional | Google Cloud TTS key; if absent, all TTS uses Web Speech API |
+| `VITE_ANTHROPIC_API_KEY` | Local dev only | Dev only | Same Anthropic key; used by Vite dev proxy to bypass Vercel serverless |
+
+> **Security**: `ANTHROPIC_API_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, and `GOOGLE_TTS_API_KEY` must only be set in Vercel environment variables (or `.env` locally). They must never appear in client-side code.
 
 ---
 
-## Importing Your Own Vocabulary CSV
+## Database Setup
 
-1. Format your CSV with these columns:
+This app requires a Supabase project with the following tables. Run the SQL below in the Supabase SQL Editor.
 
-   ```
-   ID, word, part_of_speech, meaning, example, recommended_level, related_words, other_useful_notes
-   ```
+### Core tables
 
-2. Place the CSV in the project root as `01042026_Spanishvocab.csv` (or update the path in `scripts/generate-json.js`).
+```sql
+-- Vocabulary
+CREATE TABLE vocabulary (
+  id                 uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id            uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  word               text,
+  word_language      text,
+  word_type          text DEFAULT 'word',
+  base_form          text,
+  part_of_speech     text,
+  meaning            text,
+  meanings_array     jsonb,
+  example            text,
+  recommended_level  text,
+  related_words      text,
+  other_useful_notes text,
+  romanization       text,
+  kana_reading       text,
+  word_alternatives  jsonb,
+  tags               jsonb,
+  lookup_session_id  uuid DEFAULT NULL,
+  date_added         date,
+  last_reviewed      timestamptz,
+  total_attempts     int DEFAULT 0,
+  error_counter      int DEFAULT 0,
+  correct_streak     int DEFAULT 0,
+  starred            boolean DEFAULT false,
+  mastered           boolean DEFAULT false,
+  scene              text
+);
+ALTER TABLE vocabulary ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own vocabulary" ON vocabulary FOR ALL USING (auth.uid() = user_id);
+CREATE INDEX idx_vocabulary_lookup_session ON vocabulary(lookup_session_id) WHERE lookup_session_id IS NOT NULL;
 
-3. Run the import script:
+-- Word cache (shared across users — no RLS)
+CREATE TABLE word_cache (
+  id               uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  input_word       text,
+  input_language   text,
+  learning_language text,
+  primary_language  text,
+  mode             text,
+  result           jsonb,
+  result_word      text,
+  ai_insights      jsonb,
+  audio_urls       jsonb,
+  cached_at        timestamptz DEFAULT now(),
+  CONSTRAINT word_cache_three_role_key UNIQUE (input_word, input_language, learning_language, primary_language, mode)
+);
 
-   ```bash
-   node scripts/generate-json.js
-   ```
+-- User preferences
+CREATE TABLE user_preferences (
+  user_id            uuid PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  primary_language   text DEFAULT 'en',
+  learning_language  text DEFAULT 'es',
+  secondary_languages jsonb DEFAULT '[]',
+  timezone           text,
+  desired_retention  float DEFAULT 0.8,
+  fsrs_weights       jsonb,
+  daily_review_goal  int DEFAULT 20
+);
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own preferences" ON user_preferences FOR ALL USING (auth.uid() = user_id);
 
-   This generates `src/data/vocabulary.json` with all tracking fields initialized to defaults.
+-- Event log
+CREATE TABLE user_events (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  event_type text,
+  metadata   jsonb,
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE user_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own events" ON user_events FOR ALL USING (auth.uid() = user_id);
 
-4. To clear existing progress and reload fresh data: DevTools → Application → Local Storage → delete `spanish_vocab_v1` → refresh.
-
----
-
-## Deployment (Vercel)
-
-### 1. Push to GitHub
-
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-# Create repo on github.com, then:
-git remote add origin https://github.com/YOUR_USERNAME/spanishapp.git
-git push -u origin main
+-- Word flags
+CREATE TABLE word_flags (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id    uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  word_id    uuid REFERENCES vocabulary(id) ON DELETE CASCADE,
+  word_text  text,
+  reason     text,
+  status     text DEFAULT 'open',
+  created_at timestamptz DEFAULT now()
+);
+ALTER TABLE word_flags ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own flags" ON word_flags FOR ALL USING (auth.uid() = user_id);
 ```
 
-### 2. Deploy to Vercel
+### FSRS tables
 
-1. Go to [vercel.com](https://vercel.com) → **Add New Project**
-2. Import your GitHub repo
-3. Vercel auto-detects Vite — leave build settings as-is
-4. Under **Environment Variables**, add:
-   - Name: `ANTHROPIC_API_KEY`  Value: `sk-ant-...`
-   - (No `VITE_` prefix — this key stays server-side only)
-5. Click **Deploy**
+```sql
+CREATE TABLE word_reviews_state (
+  id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id       uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  word_id       uuid REFERENCES vocabulary(id) ON DELETE CASCADE,
+  mode          text,
+  state         text DEFAULT 'new',
+  stability     float,
+  difficulty    float,
+  due_at        timestamptz,
+  last_review_at timestamptz,
+  review_count  int DEFAULT 0,
+  lapse_count   int DEFAULT 0,
+  updated_at    timestamptz DEFAULT now(),
+  created_at    timestamptz DEFAULT now(),
+  UNIQUE (user_id, word_id, mode)
+);
+ALTER TABLE word_reviews_state ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own fsrs state" ON word_reviews_state FOR ALL USING (auth.uid() = user_id);
 
-The `api/anthropic.js` serverless function proxies all Claude API calls — **your key is never sent to the browser in production**.
+CREATE TABLE sessions (
+  id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id         uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  device          text,
+  started_at      timestamptz DEFAULT now(),
+  ended_at        timestamptz,
+  review_count    int DEFAULT 0,
+  correct_count   int DEFAULT 0,
+  avg_response_ms float,
+  created_at      timestamptz DEFAULT now()
+);
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own sessions" ON sessions FOR ALL USING (auth.uid() = user_id);
 
-Every push to `main` triggers an automatic re-deploy.
+CREATE TABLE review_log (
+  id                  uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id             uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  word_id             uuid REFERENCES vocabulary(id) ON DELETE CASCADE,
+  mode                text,
+  session_id          uuid,
+  session_position    int,
+  grade               text,
+  response_time_ms    int,
+  is_correct          boolean,
+  state_before        text,
+  stability_before    float,
+  difficulty_before   float,
+  state_after         text,
+  stability_after     float,
+  difficulty_after    float,
+  elapsed_days        int,
+  device              text,
+  input_method        text,
+  interference_word_id uuid,
+  local_hour          smallint,
+  day_of_week         smallint,
+  reviewed_at         timestamptz DEFAULT now(),
+  created_at          timestamptz DEFAULT now()
+);
+ALTER TABLE review_log ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own review log" ON review_log FOR ALL USING (auth.uid() = user_id);
+
+CREATE TABLE interference_events (
+  id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id           uuid REFERENCES auth.users(id) ON DELETE CASCADE,
+  target_word_id    uuid REFERENCES vocabulary(id) ON DELETE CASCADE,
+  typed_text        text,
+  matched_word      text,
+  matched_language  text,
+  interference_type text,
+  session_id        uuid,
+  created_at        timestamptz DEFAULT now()
+);
+ALTER TABLE interference_events ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own interference events" ON interference_events FOR ALL USING (auth.uid() = user_id);
+```
+
+### Explore / seed tables
+
+```sql
+CREATE TABLE word_seeds (
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  word           text NOT NULL,
+  language       text NOT NULL,
+  level          text NOT NULL,
+  part_of_speech text,
+  enriched       boolean NOT NULL DEFAULT false,
+  created_at     timestamptz DEFAULT now(),
+  UNIQUE (word, language)
+);
+ALTER TABLE word_seeds ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "public read word_seeds" ON word_seeds FOR SELECT USING (true);
+CREATE POLICY "authenticated insert word_seeds" ON word_seeds FOR INSERT WITH CHECK (auth.role() = 'authenticated');
+CREATE POLICY "authenticated update enriched" ON word_seeds FOR UPDATE USING (auth.role() = 'authenticated') WITH CHECK (true);
+
+CREATE TABLE user_seed_progress (
+  id       uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id  uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  seed_id  uuid NOT NULL REFERENCES word_seeds(id) ON DELETE CASCADE,
+  seen_at  timestamptz DEFAULT now(),
+  UNIQUE (user_id, seed_id)
+);
+ALTER TABLE user_seed_progress ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "users manage own progress" ON user_seed_progress FOR ALL USING (auth.uid() = user_id);
+```
+
+### Audio storage
+
+Create a Storage bucket named `audio` with **public read access** enabled. The app uploads TTS MP3s to `{language}/{word}.mp3` paths.
+
+---
+
+## Deployment
+
+### Vercel
+
+1. Push the repo to GitHub
+2. Import the project at [vercel.com](https://vercel.com)
+3. Vercel auto-detects Vite — leave build settings as default
+4. Add all environment variables listed above under **Environment Variables**
+5. Deploy
+
+Every push to `main` triggers an automatic redeploy.
+
+### Auth callback URL
+
+In Supabase → Authentication → URL Configuration, add your Vercel deployment URL as an allowed redirect URL:
+```
+https://your-app.vercel.app
+```
+
+---
+
+## Architecture Notes
+
+**API security** — All AI, TTS, and admin requests go through Vercel serverless functions in `api/`. The browser never sees `ANTHROPIC_API_KEY`, `GOOGLE_TTS_API_KEY`, or `SUPABASE_SERVICE_ROLE_KEY`. Serverless functions verify the Supabase session token on every request.
+
+**Word cache** — AI results are cached in `word_cache` and shared across all users. The cache key is `(input_word, input_language, learning_language, primary_language, mode)`. A cache hit skips the AI call entirely.
+
+**Three-role language system** — Every lookup specifies three roles: `input_language` (what the user typed), `learning_language` (the word/example language), `primary_language` (the meaning/notes language). Secondary language lookups reuse the primary prompt path with swapped roles.
+
+**FSRS** — Free Spaced Repetition Scheduler (ts-fsrs). Tracks stability and difficulty per word per quiz mode. Writes are fire-and-forget — the quiz never blocks on DB operations.
+
+---
+
+## Current Limitations
+
+- FSRS desired retention, custom weights, and timezone cannot yet be configured in the Settings UI (stored in DB but no UI)
+- Daily new-card goal is stored in preferences but not enforced in the UI
+- Explore mode seed coverage: Spanish (A1–C2 curated list); other languages auto-populate from lookups
+- Hard mode response time measured from card display, not first keystroke
+- No account management (cannot delete account from the app)
 
 ---
 
 ## File Structure
 
 ```
-src/
-├── components/
-│   ├── Navigation/
-│   ├── Review/        # ReviewPage, WordRow
-│   ├── Stats/         # StatsPage (Recharts dashboard)
-│   ├── Quiz/          # QuizPage
-│   └── Input/         # InputPage
-├── hooks/
-│   └── useVocabulary.js
-├── utils/
-│   ├── vocabulary.js  # data layer (swap for Supabase calls later)
-│   ├── sorting.js     # filter + sort + SCENES constant
-│   ├── quiz.js        # weighted word selection
-│   └── anthropic.js   # API call utility
-└── data/
-    └── vocabulary.json  # seed data (generated from CSV)
-api/
-└── anthropic.js         # Vercel serverless function (keeps API key server-side)
+api/                    Vercel serverless functions
+  anthropic.js          AI word lookup proxy
+  tts.js                Google Cloud TTS proxy
+  audio-upload.js       TTS audio → Supabase Storage
+  seed-update.js        word_seeds writes (fire-and-forget)
+  admin-stats.js        Admin-only cross-user stats
+
+public/
+  manifest.json         PWA manifest
+  sw.js                 Service worker
+  icon-192.png
+  icon-512.png
+
 scripts/
-└── generate-json.js     # CSV → JSON importer
+  migrations/           One-time SQL migrations
+  seeds/                Word seed data + insert scripts
+
+src/
+  components/
+    Admin/              Admin dashboard (owner-only)
+    Auth/               AuthProvider, LoginPage
+    FlagButton/         Word quality flag UI
+    Input/              InputPage (AI lookup + secondary cards)
+    InstallPrompt/      PWA install banner
+    Navigation/         Tab bar
+    Quiz/               QuizPage, ExploreMode
+    Review/             ReviewPage, WordRow, InsightsPanel
+    Settings/           SettingsPage
+    SpeakerButton/      Shared TTS button
+    Stats/              StatsPage (Recharts)
+    TagBar/             Word tag UI
+  hooks/
+    useVocabulary.js    Vocabulary state management
+  utils/
+    anthropic.js        Client-side API request builder
+    cache.js            Word cache read/write layer
+    events.js           Fire-and-forget event logging
+    explore.js          Explore mode logic
+    flags.js            Word flag queries
+    fsrs.js             FSRS scheduling helpers
+    insights.js         AI insights fetch/persist
+    interference.js     Interference event logging
+    preferences.js      User preferences helpers
+    quiz.js             Quiz pool building + word selection
+    sorting.js          Filter + sort helpers
+    speak.js            TTS routing (Google + Web Speech)
+    supabase.js         Supabase client
+    tags.js             Tag config (6 user tags)
+    vocabulary.js       Core DB operations + aiResultToWordFields
 ```
-
----
-
-## Fork This for Your Language
-
-This app was built for Spanish, but you can adapt it to French, Japanese, Arabic, or any language. Here's how to do it from scratch — no coding experience needed.
-
----
-
-### Step 1 — Fork the repository
-
-1. Make sure you have a free [GitHub](https://github.com) account.
-2. Go to the repository page on GitHub.
-3. Click the **Fork** button in the top-right corner.
-4. GitHub creates your own copy of the project under your account.
-
----
-
-### Step 2 — Create a Supabase database (free)
-
-Supabase is the cloud database that stores your vocabulary words.
-
-1. Go to [supabase.com](https://supabase.com) and sign up for free.
-2. Click **New project**, give it a name, choose a region close to you, and set a database password (save it somewhere).
-3. Wait about a minute for the project to set up.
-4. In the left sidebar, click **SQL Editor**.
-5. Paste the following SQL and click **Run**:
-
-```sql
-CREATE TABLE vocabulary (
-  id BIGINT GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
-  word TEXT,
-  part_of_speech TEXT,
-  meaning TEXT,
-  example TEXT,
-  recommended_level TEXT,
-  related_words TEXT,
-  other_useful_notes TEXT,
-  date_added DATE,
-  last_reviewed TIMESTAMPTZ,
-  total_attempts INT DEFAULT 0,
-  error_counter INT DEFAULT 0,
-  correct_streak INT DEFAULT 0,
-  starred BOOLEAN DEFAULT FALSE,
-  mastered BOOLEAN DEFAULT FALSE,
-  scene TEXT
-);
-
-ALTER TABLE vocabulary DISABLE ROW LEVEL SECURITY;
-```
-
-6. In the left sidebar, click **Project Settings → API**.
-7. Copy two values — you'll need them later:
-   - **Project URL** (looks like `https://xxxx.supabase.co`)
-   - **anon public** key (a long string starting with `sb_publishable_` or `eyJ...`)
-
----
-
-### Step 3 — Get an Anthropic API key
-
-The Input tab uses Claude AI to look up word definitions automatically.
-
-1. Go to [console.anthropic.com](https://console.anthropic.com) and sign up.
-2. Click **API Keys → Create Key**.
-3. Copy the key (starts with `sk-ant-...`). Save it — you won't be able to see it again.
-
----
-
-### Step 4 — Deploy to Vercel (free)
-
-Vercel hosts the app online for free.
-
-1. Go to [vercel.com](https://vercel.com) and sign up with your GitHub account.
-2. Click **Add New → Project**.
-3. Find your forked repository and click **Import**.
-4. Vercel auto-detects it as a Vite project — leave all build settings as-is.
-5. Before clicking Deploy, scroll down to **Environment Variables** and add all four variables below (one at a time):
-
-| Variable name | Where to find the value |
-|---|---|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key (`sk-ant-...`) |
-| `VITE_SUPABASE_URL` | Supabase Project URL |
-| `VITE_SUPABASE_ANON_KEY` | Supabase anon public key |
-| `VITE_APP_PASSWORD` | Any password you choose to protect the app |
-
-6. Click **Deploy**. In about a minute your app will be live at a `.vercel.app` URL.
-
-> **Note:** `ANTHROPIC_API_KEY` (without `VITE_`) stays server-side and is never exposed in the browser. The others are safe to use in a personal app.
-
----
-
-### Step 5 — Change the target language
-
-By default, the AI in the Input tab is prompted to return **Spanish** definitions. To change it to another language, edit one file:
-
-**File:** `src/utils/anthropic.js`
-
-Find the two system prompt constants at the top of the file:
-
-- **`ES_EN_SYSTEM`** — used when the user types a word in your target language and wants the English meaning. Change the instructions to match your language (e.g. replace "Spanish" with "French").
-- **`EN_ES_SYSTEM`** — used when the user types an English word and wants matches in the target language. Same — replace "Spanish" with your language.
-
-You don't need to change anything else. Save the file, push to GitHub, and Vercel will redeploy automatically.
-
----
-
-### Summary of all environment variables
-
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key — server-side only, set in Vercel |
-| `VITE_SUPABASE_URL` | Yes | Your Supabase project URL |
-| `VITE_SUPABASE_ANON_KEY` | Yes | Your Supabase anon (public) key |
-| `VITE_APP_PASSWORD` | Yes | Password to access the app |
-| `VITE_ANTHROPIC_API_KEY` | Local dev only | Same Anthropic key, used when running `npm run dev` on your computer |
