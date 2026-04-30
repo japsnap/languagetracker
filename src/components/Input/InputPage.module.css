@@ -591,6 +591,33 @@
   margin: 0;
 }
 
+.miniCardLevel {
+  font-size: 0.62rem;
+  font-weight: 700;
+  padding: 0.1rem 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--bg-hover);
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+  line-height: 1;
+}
+
+.miniCardAlts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.1rem;
+}
+
+.miniCardAlt {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+  padding: 0.1rem 0.35rem;
+  font-style: italic;
+}
+
 .miniCardMeaning {
   font-size: 0.8rem;
   color: var(--text-secondary);

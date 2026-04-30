@@ -116,33 +116,14 @@ export async function lookupWordSingle(word, inputLanguage, learningLanguage, pr
  * Translates `word` (in `sourceLanguage`) into `targetLanguage`.
  * Meaning/notes are returned in `meaningLanguage` (the user's primary language).
  *
- * Returns { word_in_target, part_of_speech, word_type, base_form,
- *           meaning_brief, example_brief, related_words, other_useful_notes,
- *           romanization?, kana_reading? }
+ * Delegates to lookupWordSingle with the appropriate language role mapping:
+ *   input_language    = sourceLanguage  (language of the original word)
+ *   learning_language = targetLanguage  (secondary language — word returned here)
+ *   primary_language  = meaningLanguage (meaning/notes in user's primary language)
+ *
+ * The server's buildPrimaryPrompt includes meaning_native when learningLang ≠ primaryLang,
+ * so the returned object has the same shape as a primary lookup plus meaning_native.
  */
 export async function lookupSecondary(word, sourceLanguage, targetLanguage, meaningLanguage, signal) {
-  const normalized = word.toLowerCase().trim();
-  // Cache key: (word, sourceLanguage, meaningLanguage, targetLanguage, 'secondary')
-  const cached = await getCachedWord(normalized, sourceLanguage, meaningLanguage, targetLanguage, 'secondary');
-  if (cached !== null) {
-    logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'secondary', cache_hit: true });
-    return cached;
-  }
-  logEvent('word_lookup', { word: normalized, source: sourceLanguage, target: targetLanguage, mode: 'secondary', cache_hit: false });
-
-  // Server: learning_language=source, primary_language=target, meaning_language=user's primary
-  const text = await callAPI(
-    { word: normalized, learning_language: sourceLanguage, primary_language: targetLanguage, meaning_language: meaningLanguage, mode: 'secondary' },
-    signal,
-  );
-  let result;
-  try {
-    result = JSON.parse(text);
-  } catch {
-    const match = text.match(/\{[\s\S]*\}/);
-    if (match) { result = JSON.parse(match[0]); }
-    else throw new Error('Could not parse secondary lookup response.');
-  }
-  await setCachedWord(normalized, sourceLanguage, meaningLanguage, targetLanguage, 'secondary', result);
-  return result;
+  return lookupWordSingle(word, sourceLanguage, targetLanguage, meaningLanguage, signal);
 }

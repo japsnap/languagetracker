@@ -69,6 +69,12 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
     ...(learningLang === 'ja' ? ['  "kana_reading": "full hiragana or katakana reading of the word"'] : []),
   ] : [];
 
+  // meaning_native: one-sentence native-language gloss — only included when the learning
+  // language differs from the primary language (i.e. for secondary mini-card lookups).
+  const meaningNativeField = learningLang !== primaryLang
+    ? `,\n  "meaning_native": "one-sentence meaning in ${learning} — empty string if the word is the same in both languages"`
+    : '';
+
   const extraFieldsStr = romaFields.length
     ? ',\n' + romaFields.join(',\n')
     : '';
@@ -82,7 +88,7 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
   "part_of_speech": "in ${primary}: noun / verb / adjective / phrase / idiom / etc.",
   "base_form": "if part_of_speech is a verb: the infinitive or dictionary form in ${learning} (e.g. 'hablar' for 'hablo'); otherwise null",
   "meaning": "clear meaning in ${primary}. If there are multiple meanings, separate them with commas (e.g., 'weak, feeble, frail'). Do not use slashes or semicolons.",
-  "meanings_array": ["up to 4 distinct meanings or translations in ${primary}, first is most common — include synonyms a learner might reasonably answer"],
+  "meanings_array": ["up to 4 distinct meanings or translations in ${primary}, first is most common — include synonyms a learner might reasonably answer"]${meaningNativeField},
   "example": "a natural sentence in ${learning} using the word",
   "recommended_level": "A1 | A2 | B1 | B2 | C1 | C2",
   "related_words": "comma-separated related words in ${learning}, or empty string",
@@ -90,38 +96,6 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
 }${suffix}`;
 }
 
-function buildSecondaryPrompt(sourceLang, targetLang, meaningLang) {
-  const source  = LANGUAGE_NAMES[sourceLang];
-  const target  = LANGUAGE_NAMES[targetLang];
-  const meaning = LANGUAGE_NAMES[meaningLang] || LANGUAGE_NAMES['en'];
-
-  const romaFields = NON_LATIN.has(targetLang) ? [
-    `  "romanization": "English-readable pronunciation (${
-      targetLang === 'ja' ? 'romaji' :
-      targetLang === 'zh' ? 'pinyin with tone marks' :
-      'romanized form'
-    })"`,
-    ...(targetLang === 'ja' ? ['  "kana_reading": "full hiragana or katakana reading"'] : []),
-  ] : [];
-
-  const extraFieldsStr = romaFields.length
-    ? ',\n' + romaFields.join(',\n')
-    : '';
-
-  return `You are a multilingual language expert. Given a word in ${source}, respond with ONLY a valid JSON object — no markdown fences, no explanation. Translate the word into ${target} and provide the following fields. Part of speech labels and notes must be in ${meaning}:
-
-{
-  "word_in_target": "the word translated into ${target}",
-  "part_of_speech": "noun | verb | adjective | adverb | phrase | other (in ${meaning})",
-  "word_type": "word | phrase | idiom | expression | abbreviation",
-  "base_form": "canonical/infinitive form in ${target}, or null if already base",
-  "meaning_brief": "short meaning/definition in ${meaning} (1 sentence max)",
-  "meaning_native": "short meaning/definition in ${target} (1 sentence max — omit if ${target} equals ${meaning})",
-  "example_brief": "one short example sentence in ${target} using this word",
-  "related_words": "comma-separated related words in ${target}, or empty string",
-  "other_useful_notes": "brief grammar or usage note in ${meaning}, or empty string"${extraFieldsStr}
-}`;
-}
 
 function buildExplorePrompt(learningLang, primaryLang, level, wordType) {
   const learning = LANGUAGE_NAMES[learningLang];
@@ -180,7 +154,7 @@ Return exactly 3 collocations.`;
 //   2. Add its key to INSIGHTS_SECTIONS in InsightsPanel.jsx.
 //   The fetch and DB-save logic in insights.js requires no changes.
 
-const MAX_TOKENS = { single: 700, multi: 2000, secondary: 500, explore: 700, insights: 600 };
+const MAX_TOKENS = { single: 700, multi: 2000, explore: 700, insights: 600 };
 
 const VALID_LEVELS    = new Set(['A1', 'A2', 'B1', 'B2', 'C1', 'C2']);
 const VALID_WORD_TYPES = new Set(['word', 'phrase', 'idiom']);
@@ -267,18 +241,14 @@ export default async function handler(req, res) {
     // Standard modes: require an input word
     if (
       typeof word !== 'string' || !word.trim() ||
-      (mode !== 'secondary' && !VALID_CODES.has(input_language)) ||
+      !VALID_CODES.has(input_language) ||
       !VALID_CODES.has(learning_language) ||
       !VALID_CODES.has(primary_language) ||
-      (mode !== 'single' && mode !== 'multi' && mode !== 'secondary')
+      (mode !== 'single' && mode !== 'multi')
     ) {
       return res.status(400).json({ error: 'Invalid request payload' });
     }
-    // For secondary mode: learning_language = source lang, primary_language = target lang,
-    // meaning_language = user's primary language for meaning/notes (defaults to 'en')
-    systemPrompt = mode === 'secondary'
-      ? buildSecondaryPrompt(learning_language, primary_language, meaning_language || 'en')
-      : buildPrimaryPrompt(input_language, learning_language, primary_language, mode);
+    systemPrompt = buildPrimaryPrompt(input_language, learning_language, primary_language, mode);
     userMessage = word.trim();
   }
 
@@ -303,8 +273,8 @@ export default async function handler(req, res) {
     const data = await upstream.json();
 
     // Cache recycling — only for mode='single' (Input page lookup).
-    // Explicit allowlist: 'multi', 'secondary', 'explore', 'insights', and any quiz-related
-    // modes are excluded. Fire-and-forget: never blocks or alters the main response.
+    // Explicit allowlist: 'multi', 'explore', 'insights', and any quiz-related modes excluded.
+    // Fire-and-forget: never blocks or alters the main response.
     if (upstream.ok && ['single'].includes(mode)) {
       try {
         const textContent = data.content?.[0]?.text ?? '';

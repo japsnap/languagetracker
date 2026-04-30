@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-04-29 (secondary lookup convergence)
+
+- **Secondary mini-cards now use the primary lookup path** — `lookupSecondary` in `src/utils/anthropic.js` now delegates to `lookupWordSingle` with the correct role mapping (`input_language=sourceLang`, `learning_language=targetLang`, `primary_language=meaningLang`). The dedicated `buildSecondaryPrompt` function and `mode='secondary'` API handler branch have been removed from `api/anthropic.js`. Secondary lookups now produce full vocabulary cards: `word`, `word_alternatives`, `meanings_array`, `recommended_level`, `base_form`, `romanization`/`kana_reading` — identical schema to primary lookups. Old secondary-mode cache rows (keyed under `mode='secondary'`) are inert; new rows are written under `mode='single'` and are shared with the primary lookup cache.
+
+- **`meaning_native` added to primary prompt** — `buildPrimaryPrompt` now conditionally includes a `meaning_native` field (one-sentence gloss in the learning language) when `learningLang !== primaryLang`. This field is used by `SecondaryMiniCard` to show the word's meaning in the target language itself alongside the primary-language definition.
+
+- **`SecondaryMiniCard` updated** — reads `data.word` (was `data.word_in_target`), `data.meaning` (was `data.meaning_brief`), `data.example` (was `data.example_brief`). Now displays `recommended_level` chip and `word_alternatives` chips in the word row. `SECONDARY_EXTRA_FIELDS` updated (`example_brief` → `example`). `handleAddSecondaryLanguage` now passes `primaryLang` as meaning language (was passing `null`).
+
 ## 2026-04-29 (schema cleanup + FSRS write fix)
 
 - **FIX: FSRS writes silently blocked for all backfilled words** — `scheduleReview` in `src/utils/fsrs.js` now treats any `currentState` with `state='new'` or null `stability` as an untouched card (routes to `createEmptyCard`). Backfilled `word_reviews_state` rows have `state='new'` with null `stability`/`difficulty` — correct DB shape, but ts-fsrs 5.x throws `"Invalid memory state"` when those nulls are reconstructed into a card object. The silent `catch { return }` in `_writeFsrsResult` swallowed the error, blocking all FSRS writes for 1818 words. New words added after migration were unaffected (no pre-existing row → `currentState=null` → correct path already taken).

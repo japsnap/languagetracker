@@ -284,7 +284,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     onUpdatePreferences({ secondary_languages: [...secondaryLangs, code] });
     if ((phase === 'preview' || phase === 'candidates') && fields.word) {
       setSecondaryResults(prev => ({ ...prev, [code]: { status: 'loading', data: null } }));
-      lookupSecondary(fields.word.toLowerCase().trim(), learningLang, code, null)
+      lookupSecondary(fields.word.toLowerCase().trim(), learningLang, code, primaryLang)
         .then(data => setSecondaryResults(prev => ({ ...prev, [code]: { status: 'done', data } })))
         .catch(() => setSecondaryResults(prev => ({ ...prev, [code]: { status: 'error', data: null } })));
     }
@@ -505,7 +505,7 @@ function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguag
 // Fields shown in expanded view — add new entries here to extend without rewriting card logic
 const SECONDARY_EXTRA_FIELDS = [
   { key: 'part_of_speech',      label: 'Part of speech' },
-  { key: 'example_brief',       label: 'Example' },
+  { key: 'example',             label: 'Example' },
   { key: 'related_words',       label: 'Related words' },
   { key: 'other_useful_notes',  label: 'Notes' },
 ];
@@ -531,17 +531,27 @@ function SecondaryMiniCard({ lang, entry }) {
       ) : data ? (
         <div className={styles.miniCardBody}>
           <div className={styles.miniCardWordRow}>
-            <p className={styles.miniCardWord}>{data.word_in_target}</p>
-            <SpeakerButton word={data.word_in_target} lang={lang.code} />
+            <p className={styles.miniCardWord}>{data.word}</p>
+            <SpeakerButton word={data.word} lang={lang.code} />
+            {data.recommended_level && (
+              <span className={styles.miniCardLevel}>{data.recommended_level}</span>
+            )}
           </div>
           <RomanizationDisplay kana={data.kana_reading} romanization={data.romanization} />
-          <p className={styles.miniCardMeaning}>{data.meaning_brief}</p>
+          {data.word_alternatives?.length > 0 && (
+            <div className={styles.miniCardAlts}>
+              {data.word_alternatives.map((alt, i) => (
+                <span key={i} className={styles.miniCardAlt}>{alt}</span>
+              ))}
+            </div>
+          )}
+          <p className={styles.miniCardMeaning}>{data.meaning}</p>
           {/* Native meaning — shown only when it differs from the primary-language meaning */}
-          {data.meaning_native && data.meaning_native !== data.meaning_brief && (
+          {data.meaning_native && data.meaning_native !== data.meaning && (
             <p className={styles.miniCardMeaningNative}>{data.meaning_native}</p>
           )}
-          {!expanded && data.example_brief && (
-            <p className={styles.miniCardExample}>{data.example_brief}</p>
+          {!expanded && data.example && (
+            <p className={styles.miniCardExample}>{data.example}</p>
           )}
           {expanded && (
             <div className={styles.miniCardExtra}>
