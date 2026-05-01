@@ -57,7 +57,7 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
     ? 'a valid JSON array of up to 3 items'
     : 'a valid JSON object';
   const suffix = mode === 'multi'
-    ? '\n\nReturn between 1 and 3 items. Only include genuinely different meanings or usages.'
+    ? `\n\nReturn between 1 and 3 items. Each item must have a DIFFERENT "word" value — provide synonyms, near-synonyms, and common alternatives even when the input has only one primary meaning. For example, "beautiful" should yield separate items for "hermoso", "lindo", "bello" — not three entries all with word="hermoso". Do not repeat the same word across items.`
     : '';
 
   const romaFields = NON_LATIN.has(learningLang) ? [
