@@ -511,6 +511,20 @@
   font-style: italic;
 }
 
+.previewAlts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+.previewAlt {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--bg-alt);
+  border-radius: 4px;
+  padding: 2px 7px;
+}
+
 /* ── Wide content layout for split view ─────────────────────────────────────── */
 
 .contentWide {

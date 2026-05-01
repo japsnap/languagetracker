@@ -57,7 +57,7 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
     ? 'a valid JSON array of up to 3 items'
     : 'a valid JSON object';
   const suffix = mode === 'multi'
-    ? `\n\nReturn between 1 and 3 items. Each item must have a DIFFERENT "word" value — provide synonyms, near-synonyms, and common alternatives even when the input has only one primary meaning. For example, "beautiful" should yield separate items for "hermoso", "lindo", "bello" — not three entries all with word="hermoso". Do not repeat the same word across items.`
+    ? `\n\nReturn between 1 and 3 items following this strict priority:\n1. DIFFERENT SENSES: If the input word has genuinely different meanings (e.g. "bank" = financial institution vs. riverbank), each item must capture a different sense with its own ${learning} translation — these will have different "word" values.\n2. SYNONYMS (fallback only): If the word has only one primary meaning (e.g. "beautiful"), return ${learning} synonyms or near-synonyms instead (hermoso, lindo, bello).\nNEVER mix different-sense translations and synonyms in the same response. All items must be of the same type.`
     : '';
 
   const romaFields = NON_LATIN.has(learningLang) ? [

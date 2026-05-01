@@ -460,6 +460,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
                     setPreviewTags(newTags);
                     onUpdateWord(autoSaveState.id, { tags: newTags });
                   } : null}
+                  wordAlternatives={fields.word_alternatives}
                 />
               )}
 
@@ -704,7 +705,7 @@ function SecondaryMiniCard({ lang, entry, alreadySaved, saveState, canSave, onSa
 
 // ── PreviewCard ───────────────────────────────────────────────────────────────
 
-function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang, autoSaved, onUndoAutoSave, previewTags, onTagChange }) {
+function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang, autoSaved, onUndoAutoSave, previewTags, onTagChange, wordAlternatives }) {
   return (
     <div className={styles.previewCard} translate="no">
       <div className={styles.previewHeader}>
@@ -723,6 +724,14 @@ function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang,
         )}
       </div>
       <RomanizationDisplay kana={fields.kana_reading} romanization={fields.romanization} />
+
+      {wordAlternatives?.length > 0 && (
+        <div className={styles.previewAlts}>
+          {wordAlternatives.map((alt, i) => (
+            <span key={i} className={styles.previewAlt}>{alt}</span>
+          ))}
+        </div>
+      )}
 
       {/* Core fields */}
       {fields.meaning && (
