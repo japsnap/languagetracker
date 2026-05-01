@@ -47,6 +47,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const autoSaveTimer      = useRef(null);
   const searchInputRef     = useRef(null);
   const lookupSessionIdRef = useRef(null); // stable uuid per lookup, shared by primary + secondary saves
+  const lookupTermRef      = useRef('');   // original typed term; persists after inputWord is cleared
 
   // ── Language derivations ──────────────────────────────────────────────────────
 
@@ -90,6 +91,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     setPreviewTags([]);
     setNoMoreMeanings(false);
     lookupSessionIdRef.current = null;
+    lookupTermRef.current = '';
     if (abortRef.current) abortRef.current.abort();
   }
 
@@ -194,6 +196,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const handleLookup = useCallback(async (wordOverride) => {
     const term = (wordOverride ?? inputWord).trim();
     if (!term) return;
+    lookupTermRef.current = term;
 
     if (abortRef.current) abortRef.current.abort();
     const controller = new AbortController();
@@ -270,10 +273,13 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     setNoMoreMeanings(false);
 
     try {
-      // fields.word is already in learningLang — pass learningLang as input_language
-      // so the multi-mode prompt correctly says "user entered X in learning language"
-      const word = fields.word || inputWord;
-      const results = await lookupWord(word, learningLang, learningLang, primaryLang, controller.signal);
+      // Use the original typed term so the multi-mode prompt gets the right input word.
+      // For EN→ES: term="bank", input_language="en" → AI returns 3 different Spanish words.
+      // For ES→ES: term="banco", input_language="es" → AI returns 3 meanings of the same word.
+      // (fields.word is the learning-language translation; using it with actualInputLang
+      //  confuses the model into returning the same word with minor variations.)
+      const word = lookupTermRef.current || fields.word;
+      const results = await lookupWord(word, actualInputLang, learningLang, primaryLang, controller.signal);
       clearTimeout(timeoutId);
       if (results.length === 0) {
         setNoMoreMeanings(true);
@@ -291,7 +297,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
       }
       setPhase('error');
     }
-  }, [fields.word, inputWord, learningLang, primaryLang]);
+  }, [fields.word, inputWord, actualInputLang, learningLang, primaryLang]);
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') handleLookup();
