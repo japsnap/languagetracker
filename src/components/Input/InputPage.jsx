@@ -36,7 +36,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const [savedIndices, setSavedIndices]         = useState(new Set());
   const [errorMsg, setErrorMsg]                 = useState('');
   const [duplicate, setDuplicate]               = useState(null);
-  const [sessionAdded, setSessionAdded]         = useState([]);
   const [savedFlash, setSavedFlash]             = useState('');
   const [secondaryResults, setSecondaryResults]       = useState({}); // { [langCode]: { status, data } }
   const [secondarySaveStates, setSecondarySaveStates] = useState({}); // { [langCode]: { status: 'idle'|'saving'|'saved'|'error', id: uuid|null } }
@@ -48,6 +47,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const searchInputRef     = useRef(null);
   const lookupSessionIdRef = useRef(null); // stable uuid per lookup, shared by primary + secondary saves
   const lookupTermRef      = useRef('');   // original typed term; persists after inputWord is cleared
+
+  const recentWords = [...words].sort((a, b) => b.id - a.id).slice(0, 5);
 
   // ── Language derivations ──────────────────────────────────────────────────────
 
@@ -107,7 +108,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     }
     try {
       const saved = await onAddWord(wordData);
-      setSessionAdded(prev => [saved, ...prev].slice(0, 5));
       setAutoSaveState({ id: saved.id, word: saved.word });
       // After 10s: remove Undo button, keep card open with a quiet 'Saved ✓' message
       autoSaveTimer.current = setTimeout(() => {
@@ -122,7 +122,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   function handleUndoAutoSave() {
     if (!autoSaveState?.id) return;
     onRemoveWord(autoSaveState.id);
-    setSessionAdded(prev => prev.filter(w => w.id !== autoSaveState.id));
     clearTimeout(autoSaveTimer.current);
     resetLookupState(); // close preview immediately, no flash
   }
@@ -328,7 +327,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
 
     try {
       const saved = await onAddWord(wordData);
-      setSessionAdded(prev => [saved, ...prev].slice(0, 5));
       setSavedIndices(prev => new Set([...prev, index]));
       setSavedFlash(`"${saved.word}" saved!`);
       setTimeout(() => setSavedFlash(''), 2500);
@@ -352,7 +350,6 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
 
   function handleUndoAdd(id) {
     onRemoveWord(id);
-    setSessionAdded(prev => prev.filter(w => w.id !== id));
   }
 
   // ── Derived UI strings ────────────────────────────────────────────────────────
@@ -513,11 +510,11 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
         )}
 
         {/* Recent additions */}
-        {sessionAdded.length > 0 && (
+        {recentWords.length > 0 && (
           <div className={styles.recentSection}>
-            <h3 className={styles.recentTitle}>Added this session</h3>
+            <h3 className={styles.recentTitle}>Last added words</h3>
             <div className={styles.recentList}>
-              {sessionAdded.map(w => (
+              {recentWords.map(w => (
                 <div key={w.id} className={styles.recentItem}>
                   <span className={styles.recentWord}>{w.word}</span>
                   <span className={styles.recentPos}>{w.part_of_speech}</span>
