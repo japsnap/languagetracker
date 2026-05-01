@@ -505,6 +505,12 @@
 }
 .seeMoreBtn:hover { color: var(--text-primary); }
 
+.noMoreNote {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
 /* ── Wide content layout for split view ─────────────────────────────────────── */
 
 .contentWide {

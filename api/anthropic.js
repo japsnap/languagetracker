@@ -69,9 +69,10 @@ function buildPrimaryPrompt(inputLang, learningLang, primaryLang, mode) {
     ...(learningLang === 'ja' ? ['  "kana_reading": "full hiragana or katakana reading of the word"'] : []),
   ] : [];
 
-  // meaning_native: one-sentence native-language gloss — only included when the learning
-  // language differs from the primary language (i.e. for secondary mini-card lookups).
-  const meaningNativeField = learningLang !== primaryLang
+  // meaning_native: one-sentence native-language gloss for secondary mini-cards.
+  // Excluded from multi-mode: each array item would need an identical gloss for the same
+  // word, which confuses the model and reduces the number of distinct meanings returned.
+  const meaningNativeField = (learningLang !== primaryLang && mode !== 'multi')
     ? `,\n  "meaning_native": "one-sentence meaning in ${learning} — empty string if the word is the same in both languages"`
     : '';
 

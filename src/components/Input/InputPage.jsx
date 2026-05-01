@@ -42,6 +42,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const [secondarySaveStates, setSecondarySaveStates] = useState({}); // { [langCode]: { status: 'idle'|'saving'|'saved'|'error', id: uuid|null } }
   const [autoSaveState, setAutoSaveState]             = useState(null); // null | { id, word }
   const [previewTags,   setPreviewTags]               = useState([]);
+  const [noMoreMeanings, setNoMoreMeanings]           = useState(false);
   const abortRef           = useRef(null);
   const autoSaveTimer      = useRef(null);
   const searchInputRef     = useRef(null);
@@ -87,6 +88,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     clearTimeout(autoSaveTimer.current);
     setAutoSaveState(null);
     setPreviewTags([]);
+    setNoMoreMeanings(false);
     lookupSessionIdRef.current = null;
     if (abortRef.current) abortRef.current.abort();
   }
@@ -265,12 +267,21 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     setPhase('loading');
     setErrorMsg('');
     setSavedIndices(new Set());
+    setNoMoreMeanings(false);
 
     try {
-      const results = await lookupWord(fields.word || inputWord, actualInputLang, learningLang, primaryLang, controller.signal);
+      // fields.word is already in learningLang — pass learningLang as input_language
+      // so the multi-mode prompt correctly says "user entered X in learning language"
+      const word = fields.word || inputWord;
+      const results = await lookupWord(word, learningLang, learningLang, primaryLang, controller.signal);
       clearTimeout(timeoutId);
-      setCandidates(results);
-      setPhase('candidates');
+      if (results.length === 0) {
+        setNoMoreMeanings(true);
+        setPhase('preview');
+      } else {
+        setCandidates(results);
+        setPhase('candidates');
+      }
     } catch (err) {
       clearTimeout(timeoutId);
       if (err.name === 'AbortError') {
@@ -280,7 +291,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
       }
       setPhase('error');
     }
-  }, [fields.word, inputWord, actualInputLang, learningLang, primaryLang]);
+  }, [fields.word, inputWord, learningLang, primaryLang]);
 
   function handleKeyDown(e) {
     if (e.key === 'Enter') handleLookup();
@@ -433,8 +444,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
                 <PreviewCard
                   fields={fields}
                   duplicate={duplicate}
-                  onSeeMore={handleSeeMore}
-                  seeMoreLabel={seeMoreLabel}
+                  onSeeMore={noMoreMeanings ? null : handleSeeMore}
+                  seeMoreLabel={noMoreMeanings ? 'No additional meanings found' : seeMoreLabel}
                   learningLang={learningLang}
                   autoSaved={autoSaveState}
                   onUndoAutoSave={handleUndoAutoSave}
@@ -488,6 +499,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
                 onSave={handleSaveSecondary}
                 onUndo={handleUndoSecondary}
                 primaryLang={primaryLang}
+                inputLang={actualInputLang}
               />
             )}
           </div>
@@ -522,7 +534,7 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
 
 // ── Secondary column ──────────────────────────────────────────────────────────
 
-function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguage, words, saveStates, onSave, onUndo, primaryLang }) {
+function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguage, words, saveStates, onSave, onUndo, primaryLang, inputLang }) {
   const canAdd = secondaryLangs.length < 4 && availableToAdd.length > 0;
 
   return (
@@ -530,6 +542,7 @@ function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguag
       {secondaryLangs.map(code => {
         const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
         if (!lang) return null;
+        if (code === inputLang) return null;
         const entry = results[code];
         const data  = entry?.data;
         // Pre-populate saved state if this word already exists in user's vocab for this language
@@ -753,11 +766,15 @@ function PreviewCard({ fields, duplicate, onSeeMore, seeMoreLabel, learningLang,
         </div>
       )}
 
-      {onSeeMore && (
+      {(onSeeMore || seeMoreLabel) && (
         <div className={styles.seeMoreRow}>
-          <button className={styles.seeMoreBtn} onClick={onSeeMore}>
-            {seeMoreLabel} →
-          </button>
+          {onSeeMore ? (
+            <button className={styles.seeMoreBtn} onClick={onSeeMore}>
+              {seeMoreLabel} →
+            </button>
+          ) : (
+            <span className={styles.noMoreNote}>{seeMoreLabel}</span>
+          )}
         </div>
       )}
     </div>
