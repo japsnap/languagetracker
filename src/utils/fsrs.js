@@ -45,8 +45,8 @@ export function getFsrsInstance(desiredRetention = DEFAULT_DESIRED_RETENTION, we
 export function inferGradeHardMode({ isCorrect, responseTimeMs, wordLength }) {
   if (!isCorrect) return 'again';
 
-  // Scale factor: words shorter than 6 chars keep baseline; longer words get more time.
-  const scale = Math.max(1, wordLength / 6);
+  // Scale factor: compresses windows for short words, caps at 3× for very long words.
+  const scale = Math.min(3, wordLength / 6);
   const scaledEasy = HARD_MODE_THRESHOLDS.easy_max_ms * scale;
   const scaledGood = HARD_MODE_THRESHOLDS.good_max_ms * scale;
 

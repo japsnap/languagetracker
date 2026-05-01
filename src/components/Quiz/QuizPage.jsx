@@ -658,7 +658,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     setTypedAnswer('');
     setCollisionInfo(null);
     lastFsrsUndoRef.current = null; // clear stale undo from previous card
-    revealedAtRef.current = performance.now(); // start response-time window
+    revealedAtRef.current = null;  // reset; timer starts on input focus (Hard mode)
     setPhase('question');
   }
 
@@ -1089,6 +1089,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
               onChangeAnswer={handleChangeAnswer}
               onGoBack={handleGoBack}
               onNext={startOrNext}
+              onInputFocus={() => { if (!revealedAtRef.current) revealedAtRef.current = performance.now(); }}
               onUpdateWord={onUpdateWord}
               collisionInfo={collisionInfo}
               learningLang={preferences?.learning_language || 'es'}
@@ -1146,7 +1147,7 @@ const ALL_ANSWER_TYPES = ['easy', 'correct', 'not-sure', 'wrong'];
 function QuizCard({
   word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode,
   typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer,
-  onGoBack, onNext, onUpdateWord, collisionInfo, learningLang, primaryLang,
+  onGoBack, onNext, onInputFocus, onUpdateWord, collisionInfo, learningLang, primaryLang,
 }) {
   const inputRef = useRef(null);
 
@@ -1269,6 +1270,7 @@ function QuizCard({
                 placeholder={`Type the word${learningLangObj ? ` in ${learningLangObj.label}` : ''}...`}
                 value={typedAnswer}
                 onChange={e => onTypedAnswerChange(e.target.value)}
+                onFocus={onInputFocus}
                 onKeyDown={e => { if (e.key === 'Enter' && typedAnswer.trim()) onCheckAnswer(typedAnswer); }}
                 translate="no"
                 autoComplete="off"
