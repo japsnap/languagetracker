@@ -64,7 +64,7 @@ function computeLegacyStats(words) {
     .filter(w => w.total_attempts > 0)
     .sort((a, b) => b.total_attempts - a.total_attempts)
     .slice(0, 10)
-    .map(w => ({ word: w.word, attempts: w.total_attempts }));
+    .map(w => ({ word: w.word, attempts: w.total_attempts, meaning: w.meaning || '' }));
 
   const dateMap = {};
   words.forEach(w => { if (w.date_added) dateMap[w.date_added] = (dateMap[w.date_added] || 0) + 1; });
@@ -550,9 +550,18 @@ export default function StatsPage({ words, preferences }) {
                   <XAxis type="number" tick={{ fill: 'var(--text-muted)', fontSize: 11 }} allowDecimals={false} tickFormatter={n => Math.floor(n)} />
                   <YAxis type="category" dataKey="word" width={110} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip
-                    contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
-                    formatter={val => [val, 'Attempts']}
                     cursor={{ fill: 'var(--bg-hover)' }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, maxWidth: 240 }}>
+                          <div style={{ fontWeight: 600, marginBottom: 2 }}>{d.word}</div>
+                          <div style={{ color: 'var(--text-muted)' }}>{d.attempts} attempts</div>
+                          {d.meaning && <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 4, lineHeight: 1.4 }}>{d.meaning}</div>}
+                        </div>
+                      );
+                    }}
                   />
                   <Bar dataKey="attempts" fill="var(--gold)" radius={[0,4,4,0]} />
                 </BarChart>
