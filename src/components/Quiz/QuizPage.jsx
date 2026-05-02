@@ -354,6 +354,10 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   const [secTranslations, setSecTranslations] = useState([]); // secondary lang chips for Easy mode revealed
   const [fillTranslationsLoading, setFillTranslationsLoading] = useState(false);
   const [savedChipLangs, setSavedChipLangs] = useState(() => new Set());
+  const [chipHintDismissed, setChipHintDismissed] = useState(
+    () => sessionStorage.getItem('quiz_chip_hint_dismissed') === '1'
+  );
+  const chipViewedIdsRef = useRef(new Set()); // tracks card IDs where chips were seen (for auto-dismiss)
   const [sessionElapsedMs, setSessionElapsedMs] = useState(null); // ms elapsed at session-complete
   const [filtersCollapsed, setFiltersCollapsed] = useState(false); // mobile-only collapse; auto-collapses after first card
 
@@ -573,6 +577,19 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   // Reset fill/save state when the card changes
   useEffect(() => { setFillTranslationsLoading(false); setSavedChipLangs(new Set()); }, [current?.id]);
 
+  function dismissChipHint() {
+    setChipHintDismissed(true);
+    sessionStorage.setItem('quiz_chip_hint_dismissed', '1');
+  }
+
+  // Auto-dismiss chip hint after 3 unique card views that showed chips
+  useEffect(() => {
+    if (chipHintDismissed || phase !== 'revealed' || secTranslations.length === 0 || !current?.id) return;
+    if (chipViewedIdsRef.current.has(current.id)) return;
+    chipViewedIdsRef.current.add(current.id);
+    if (chipViewedIdsRef.current.size >= 3) dismissChipHint();
+  }, [phase, secTranslations.length, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Fill translations — fires lookupSecondary for each missing chip lang ──
   const handleFillTranslations = useCallback(async () => {
     if (!current || fillTranslationsLoading) return;
@@ -654,8 +671,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     );
     if (alreadyInVocab) { setSavedChipLangs(prev => new Set([...prev, chip.lang])); return; }
 
-    // Optimistic update
+    // Optimistic update + dismiss first-time hint
     setSavedChipLangs(prev => new Set([...prev, chip.lang]));
+    dismissChipHint();
 
     try {
       const today = new Date().toISOString().split('T')[0];
@@ -1479,6 +1497,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
               secTranslations={secTranslations}
               chipCandidateLangs={chipCandidateLangs}
               chipSaveStateMap={chipSaveStateMap}
+              hasUnsavedChips={secTranslations.some(c => chipSaveStateMap[c.lang] !== 'saved')}
+              showChipHint={!chipHintDismissed}
               fillTranslationsLoading={fillTranslationsLoading}
               onFillTranslations={handleFillTranslations}
               onSaveChip={handleSaveChip}
@@ -1550,7 +1570,8 @@ function QuizCard({
   word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode,
   typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer,
   onGoBack, onNext, onInputFocus, onUpdateWord, collisionInfo, learningLang, primaryLang,
-  secTranslations, chipCandidateLangs, chipSaveStateMap, fillTranslationsLoading, onFillTranslations, onSaveChip,
+  secTranslations, chipCandidateLangs, chipSaveStateMap, hasUnsavedChips, showChipHint,
+  fillTranslationsLoading, onFillTranslations, onSaveChip,
 }) {
   const inputRef = useRef(null);
 
@@ -1750,6 +1771,16 @@ function QuizCard({
               if (!showChips && !showFillBtn) return null;
               return (
                 <div className={styles.secLangChips}>
+                  {/* First-time hint banner — more prominent, shown until dismissed */}
+                  {hasUnsavedChips && showChipHint && (
+                    <div className={styles.chipHintBanner}>
+                      🌐 Tap any translation to save it to your vocab
+                    </div>
+                  )}
+                  {/* Persistent small label — shown after hint dismissed */}
+                  {hasUnsavedChips && !showChipHint && (
+                    <span className={styles.chipHintLabel}>🌐 Tap to save</span>
+                  )}
                   {showChips && secTranslations.map(chip => {
                     const isSaved = chipSaveStateMap?.[chip.lang] === 'saved';
                     return (

@@ -422,6 +422,23 @@
   opacity: 0.75;
 }
 
+/* First-time chip hint banner — full-width row above chips */
+.chipHintBanner {
+  flex: 0 0 100%;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  padding-bottom: 0.3rem;
+}
+
+/* Persistent small label — inline before chips after hint is dismissed */
+.chipHintLabel {
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  align-self: center;
+  padding-right: 0.15rem;
+}
+
 .fillTransBtn {
   display: inline-flex;
   align-items: center;
