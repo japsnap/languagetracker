@@ -71,12 +71,23 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const primaryLangCardActive = actualInputLang !== primaryLang &&
                                (phase === 'preview' || phase === 'candidates') && !!fields.word;
 
-  const splitActive = (Object.keys(secondaryResults).length > 0 || primaryLangCardActive) &&
+  // When input === primary (e.g. typing English while primary=EN): skip the API lookup,
+  // offer a direct save of the typed word instead.
+  const primarySaveCardActive = actualInputLang === primaryLang &&
+                                (phase === 'preview' || phase === 'candidates') && !!fields.word;
+
+  const splitActive = (Object.keys(secondaryResults).length > 0 || primaryLangCardActive || primarySaveCardActive) &&
                       (phase === 'preview' || phase === 'candidates');
 
   const primaryAlreadySaved = !!(primaryCardResult?.data?.word && words.some(
     w => w.word?.toLowerCase() === primaryCardResult.data.word.toLowerCase() && w.word_language === primaryLang
   ));
+
+  // Pre-check for direct save: typed term already in vocab for primary language
+  const primaryDirectAlreadySaved = primarySaveCardActive && words.some(
+    w => w.word?.toLowerCase() === (lookupTermRef.current || fields.word)?.toLowerCase() &&
+         w.word_language === primaryLang
+  );
 
   const availableToAdd = SUPPORTED_LANGUAGES.filter(l =>
     l.code !== actualInputLang &&
@@ -216,6 +227,47 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     if (!primarySaveState.id) return;
     onRemoveWord(primarySaveState.id);
     setPrimarySaveState({ status: 'idle', id: null });
+  }
+
+  // Direct save — only used when inputLang === primaryLang.
+  // Saves the original typed word using data already in `fields` (no API call).
+  // word_alternatives/example/related_words are omitted: they're in the learning language,
+  // not the input language, so they'd be wrong for this row.
+  async function handleSavePrimaryDirect() {
+    setPrimarySaveState({ status: 'saving', id: null });
+    try {
+      const wordData = {
+        word:               lookupTermRef.current || fields.word,
+        word_type:          'word',
+        part_of_speech:     '',
+        base_form:          null,
+        meaning:            fields.meaning || '',
+        meanings_array:     null,
+        word_alternatives:  null,
+        example:            '',
+        recommended_level:  fields.recommended_level || '',
+        related_words:      '',
+        other_useful_notes: '',
+        romanization:       null,
+        kana_reading:       null,
+        word_language:      primaryLang,
+        date_added:         localToday(),
+        last_reviewed:      null,
+        total_attempts:     0,
+        error_counter:      0,
+        correct_streak:     0,
+        starred:            false,
+        mastered:           false,
+        scene:              null,
+        tags:               ['polyglot'],
+        lookup_session_id:  lookupSessionIdRef.current,
+      };
+      const saved = await onAddWord(wordData);
+      setPrimarySaveState({ status: 'saved', id: saved.id });
+    } catch (err) {
+      console.error('[primary-direct-save]', err?.message);
+      setPrimarySaveState({ status: 'error', id: null });
+    }
   }
 
   // ── Secondary lookups ─────────────────────────────────────────────────────────
@@ -560,12 +612,15 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
                 primaryLang={primaryLang}
                 inputLang={actualInputLang}
                 primaryLangCardActive={primaryLangCardActive}
+                primarySaveCardActive={primarySaveCardActive}
                 primaryLangObj={primaryLangObj}
                 primaryCardResult={primaryCardResult}
                 primaryAlreadySaved={primaryAlreadySaved}
+                primaryDirectAlreadySaved={primaryDirectAlreadySaved}
                 primarySaveState={primarySaveState}
                 onShowPrimary={handleShowPrimary}
                 onSavePrimary={() => handleSavePrimary(primaryCardResult?.data)}
+                onSavePrimaryDirect={handleSavePrimaryDirect}
                 onUndoPrimary={handleUndoPrimary}
               />
             )}
@@ -604,8 +659,9 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
 function SecondaryColumn({
   secondaryLangs, results, availableToAdd, onAddLanguage, words, saveStates, onSave, onUndo,
   primaryLang, inputLang,
-  primaryLangCardActive, primaryLangObj, primaryCardResult, primaryAlreadySaved,
-  primarySaveState, onShowPrimary, onSavePrimary, onUndoPrimary,
+  primaryLangCardActive, primarySaveCardActive, primaryLangObj,
+  primaryCardResult, primaryAlreadySaved, primaryDirectAlreadySaved,
+  primarySaveState, onShowPrimary, onSavePrimary, onSavePrimaryDirect, onUndoPrimary,
 }) {
   const canAdd = secondaryLangs.length < 4 && availableToAdd.length > 0;
 
@@ -659,6 +715,15 @@ function SecondaryColumn({
           onUndo={onUndoPrimary}
         />
       )}
+      {primarySaveCardActive && primaryLangObj && (
+        <PrimaryDirectSaveCard
+          primaryLangObj={primaryLangObj}
+          alreadySaved={primaryDirectAlreadySaved}
+          saveState={primarySaveState}
+          onSave={onSavePrimaryDirect}
+          onUndo={onUndoPrimary}
+        />
+      )}
     </div>
   );
 }
@@ -684,6 +749,56 @@ function PrimaryLangCard({ primaryLangObj, entry, alreadySaved, saveState, canSa
       onSave={onSave}
       onUndo={onUndo}
     />
+  );
+}
+
+// ── PrimaryDirectSaveCard ─────────────────────────────────────────────────────
+// Used when inputLang === primaryLang. No API call — saves the typed word directly.
+
+function PrimaryDirectSaveCard({ primaryLangObj, alreadySaved, saveState, onSave, onUndo }) {
+  const [showUndo, setShowUndo] = useState(false);
+  const undoTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (saveState?.status === 'saved') {
+      setShowUndo(true);
+      clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = setTimeout(() => setShowUndo(false), 5000);
+    } else {
+      setShowUndo(false);
+    }
+    return () => clearTimeout(undoTimerRef.current);
+  }, [saveState?.status]);
+
+  const isSaved = alreadySaved || saveState?.status === 'saved';
+
+  if (isSaved) {
+    return (
+      <div className={styles.miniCard}>
+        <div className={styles.miniCardHeader}>
+          <span className={styles.miniCardFlag}>{primaryLangObj.flag}</span>
+          <span className={styles.miniCardLang}>{primaryLangObj.label}</span>
+        </div>
+        <div className={styles.miniCardSavedBar}>
+          <span className={styles.miniCardSavedText}>Saved ✓</span>
+          {showUndo && !alreadySaved && (
+            <button className={styles.miniCardUndoBtn} onClick={onUndo}>Undo</button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      className={styles.showPrimaryBtn}
+      onClick={onSave}
+      disabled={saveState?.status === 'saving'}
+    >
+      {saveState?.status === 'saving'
+        ? <span className={styles.miniSpinner} />
+        : `Save in ${primaryLangObj.flag} ${primaryLangObj.label}`}
+    </button>
   );
 }
 
