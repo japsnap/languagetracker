@@ -75,6 +75,87 @@
   flex-shrink: 0;
 }
 
+.divider {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  gap: 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.divider::before,
+.divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.otpForm {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  width: 100%;
+}
+
+.emailInput {
+  width: 100%;
+  padding: 0.65rem 0.9rem;
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-family: var(--font-body);
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.emailInput:focus {
+  border-color: var(--text-muted);
+}
+
+.otpBtn {
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: var(--bg-alt);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 0.92rem;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.otpBtn:hover:not(:disabled) {
+  background: var(--bg-input);
+}
+.otpBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.otpSuccess {
+  font-size: 0.9rem;
+  color: var(--text-primary);
+  text-align: center;
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.otpError {
+  font-size: 0.82rem;
+  color: #c0392b;
+  margin: 0;
+  text-align: center;
+}
+
 .webviewBanner {
   width: 100%;
   background: var(--bg-alt);

@@ -14,7 +14,11 @@ function isInAppBrowser() {
 
 export default function LoginPage() {
   const webView = isInAppBrowser();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied]       = useState(false);
+  const [email, setEmail]         = useState('');
+  const [otpSent, setOtpSent]     = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpError, setOtpError]   = useState('');
 
   function handleGoogleSignIn() {
     supabase.auth.signInWithOAuth({
@@ -30,6 +34,23 @@ export default function LoginPage() {
     });
   }
 
+  async function handleMagicLink(e) {
+    e.preventDefault();
+    if (!email.trim() || otpLoading) return;
+    setOtpLoading(true);
+    setOtpError('');
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim(),
+      options: { emailRedirectTo: window.location.origin },
+    });
+    setOtpLoading(false);
+    if (error) {
+      setOtpError(error.message);
+    } else {
+      setOtpSent(true);
+    }
+  }
+
   return (
     <div className={styles.backdrop}>
       <div className={styles.card}>
@@ -40,7 +61,7 @@ export default function LoginPage() {
         {webView ? (
           <div className={styles.webviewBanner}>
             <p className={styles.webviewMsg}>
-              For Google sign-in, please open this page in Chrome or Safari
+              For Google sign-in and app install, please open this page in Chrome or Safari
             </p>
             <button className={styles.copyBtn} onClick={handleCopyLink}>
               {copied ? 'Copied!' : 'Copy Link'}
@@ -56,6 +77,32 @@ export default function LoginPage() {
             </svg>
             Sign in with Google
           </button>
+        )}
+
+        <div className={styles.divider}><span>or</span></div>
+
+        {otpSent ? (
+          <p className={styles.otpSuccess}>Check your email for a login link</p>
+        ) : (
+          <form className={styles.otpForm} onSubmit={handleMagicLink}>
+            <input
+              className={styles.emailInput}
+              type="email"
+              placeholder="your@email.com"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              required
+              autoComplete="email"
+            />
+            <button
+              className={styles.otpBtn}
+              type="submit"
+              disabled={!email.trim() || otpLoading}
+            >
+              {otpLoading ? 'Sending…' : 'Send magic link'}
+            </button>
+            {otpError && <p className={styles.otpError}>{otpError}</p>}
+          </form>
         )}
       </div>
     </div>
