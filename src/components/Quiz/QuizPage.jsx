@@ -353,6 +353,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   const [fsrsDueCount, setFsrsDueCount] = useState(null); // due cards for header badge
   const [secTranslations, setSecTranslations] = useState([]); // secondary lang chips for Easy mode revealed
   const [fillTranslationsLoading, setFillTranslationsLoading] = useState(false);
+  const [savedChipLangs, setSavedChipLangs] = useState(() => new Set());
   const [sessionElapsedMs, setSessionElapsedMs] = useState(null); // ms elapsed at session-complete
   const [filtersCollapsed, setFiltersCollapsed] = useState(false); // mobile-only collapse; auto-collapses after first card
 
@@ -460,7 +461,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         ) {
           const langObj = SUPPORTED_LANGUAGES.find(l => l.code === w.word_language);
           if (langObj) {
-            vocabChips.push({ lang: w.word_language, flag: langObj.flag, word: w.word, romanization: w.romanization || null, kana_reading: w.kana_reading || null });
+            vocabChips.push({ lang: w.word_language, flag: langObj.flag, word: w.word, romanization: w.romanization || null, kana_reading: w.kana_reading || null, meaning: w.meaning || '', word_type: w.word_type || 'word', recommended_level: w.recommended_level || null, part_of_speech: w.part_of_speech || null, example: w.example || '' });
             coveredLangs.add(w.word_language);
           }
         }
@@ -532,7 +533,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
             const langObj = SUPPORTED_LANGUAGES.find(l => l.code === secLang);
             if (!langObj) return null;
             const resp = row.response || {};
-            return { lang: secLang, flag: langObj.flag, word: row.result_word, romanization: resp.romanization || null, kana_reading: resp.kana_reading || null };
+            return { lang: secLang, flag: langObj.flag, word: row.result_word, romanization: resp.romanization || null, kana_reading: resp.kana_reading || null, meaning: resp.meaning || '', word_type: resp.word_type || 'word', recommended_level: resp.recommended_level || null, part_of_speech: resp.part_of_speech || null, example: resp.example || '' };
           })
           .filter(Boolean);
 
@@ -569,8 +570,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     return [...new Set([...secLangs, learningLang])].filter(l => l !== wordLang);
   }, [current?.id, quizMode, preferences?.secondary_languages, preferences?.learning_language]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Reset fill-translations state when the card changes
-  useEffect(() => { setFillTranslationsLoading(false); }, [current?.id]);
+  // Reset fill/save state when the card changes
+  useEffect(() => { setFillTranslationsLoading(false); setSavedChipLangs(new Set()); }, [current?.id]);
 
   // ── Fill translations — fires lookupSecondary for each missing chip lang ──
   const handleFillTranslations = useCallback(async () => {
@@ -623,6 +624,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
             return [...prev, {
               lang: secLang, flag: langObj.flag, word: result.word,
               romanization: result.romanization || null, kana_reading: result.kana_reading || null,
+              meaning: result.meaning || '', word_type: result.word_type || 'word',
+              recommended_level: result.recommended_level || null, part_of_speech: result.part_of_speech || null, example: result.example || '',
             }];
           });
         } catch (err) {
@@ -631,6 +634,61 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       })
     ).finally(() => setFillTranslationsLoading(false));
   }, [current, chipCandidateLangs, fillTranslationsLoading, preferences]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Chip save state: 'saved' if saved this session OR already in vocab for that word+lang
+  const chipSaveStateMap = useMemo(() => {
+    const map = {};
+    for (const chip of secTranslations) {
+      const inVocab = words.some(
+        w => w.word?.toLowerCase() === chip.word?.toLowerCase() && w.word_language === chip.lang
+      );
+      map[chip.lang] = (inVocab || savedChipLangs.has(chip.lang)) ? 'saved' : 'none';
+    }
+    return map;
+  }, [secTranslations, words, savedChipLangs]);
+
+  const handleSaveChip = useCallback(async (chip) => {
+    if (savedChipLangs.has(chip.lang)) return;
+    const alreadyInVocab = words.some(
+      w => w.word?.toLowerCase() === chip.word?.toLowerCase() && w.word_language === chip.lang
+    );
+    if (alreadyInVocab) { setSavedChipLangs(prev => new Set([...prev, chip.lang])); return; }
+
+    // Optimistic update
+    setSavedChipLangs(prev => new Set([...prev, chip.lang]));
+
+    try {
+      const today = new Date().toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('vocabulary')
+        .insert({
+          user_id: user.id,
+          word: chip.word,
+          word_language: chip.lang,
+          meaning: chip.meaning || '',
+          word_type: chip.word_type || 'word',
+          recommended_level: chip.recommended_level || null,
+          part_of_speech: chip.part_of_speech || null,
+          example: chip.example || '',
+          romanization: chip.romanization || null,
+          kana_reading: chip.kana_reading || null,
+          tags: ['polyglot'],
+          date_added: today,
+          starred: false,
+          mastered: false,
+          total_attempts: 0,
+          correct_streak: 0,
+          error_counter: 0,
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      if (data && onAddWord) onAddWord(data);
+    } catch (err) {
+      console.error('[chip-save] failed', err);
+      setSavedChipLangs(prev => { const s = new Set(prev); s.delete(chip.lang); return s; });
+    }
+  }, [savedChipLangs, words, user?.id, onAddWord]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Computed pools ────────────────────────────────────────────────────────
   const vocabLangs = useMemo(
@@ -1420,8 +1478,10 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
               primaryLang={preferences?.primary_language || 'en'}
               secTranslations={secTranslations}
               chipCandidateLangs={chipCandidateLangs}
+              chipSaveStateMap={chipSaveStateMap}
               fillTranslationsLoading={fillTranslationsLoading}
               onFillTranslations={handleFillTranslations}
+              onSaveChip={handleSaveChip}
             />
           )}
 
@@ -1490,7 +1550,7 @@ function QuizCard({
   word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode,
   typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer,
   onGoBack, onNext, onInputFocus, onUpdateWord, collisionInfo, learningLang, primaryLang,
-  secTranslations, chipCandidateLangs, fillTranslationsLoading, onFillTranslations,
+  secTranslations, chipCandidateLangs, chipSaveStateMap, fillTranslationsLoading, onFillTranslations, onSaveChip,
 }) {
   const inputRef = useRef(null);
 
@@ -1690,14 +1750,24 @@ function QuizCard({
               if (!showChips && !showFillBtn) return null;
               return (
                 <div className={styles.secLangChips}>
-                  {showChips && secTranslations.map(chip => (
-                    <span key={chip.lang} className={styles.secLangChip} translate="no">
-                      {chip.flag} {chip.word}
-                      {NON_LATIN.has(chip.lang) && (chip.kana_reading || chip.romanization) && (
-                        <span className={styles.secLangRoma}> {chip.kana_reading || chip.romanization}</span>
-                      )}
-                    </span>
-                  ))}
+                  {showChips && secTranslations.map(chip => {
+                    const isSaved = chipSaveStateMap?.[chip.lang] === 'saved';
+                    return (
+                      <button
+                        key={chip.lang}
+                        className={`${styles.secLangChip} ${isSaved ? styles.secLangChipSaved : styles.secLangChipBtn}`}
+                        onClick={() => !isSaved && onSaveChip(chip)}
+                        disabled={isSaved}
+                        title={isSaved ? 'Saved to vocabulary' : `Save ${chip.word} to vocabulary`}
+                        translate="no"
+                      >
+                        {isSaved ? '✓ ' : ''}{chip.flag} {chip.word}
+                        {NON_LATIN.has(chip.lang) && (chip.kana_reading || chip.romanization) && (
+                          <span className={styles.secLangRoma}> {chip.kana_reading || chip.romanization}</span>
+                        )}
+                      </button>
+                    );
+                  })}
                   {showFillBtn && (
                     <button
                       className={styles.fillTransBtn}

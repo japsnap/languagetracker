@@ -388,12 +388,32 @@
 }
 
 .secLangChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;
   font-size: 0.8rem;
-  color: var(--text-muted);
+  font-family: var(--font-body);
   background: var(--bg-alt);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 3px 8px;
+  cursor: default;
+}
+
+.secLangChipBtn {
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.secLangChipBtn:hover {
+  border-color: var(--gold);
+  color: var(--text-secondary);
+}
+
+.secLangChipSaved {
+  color: #43a047;
+  border-color: rgba(67, 160, 71, 0.45);
+  cursor: default;
 }
 
 .secLangRoma {
