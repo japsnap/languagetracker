@@ -351,6 +351,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   const sessionCorrectCountRef  = useRef(0);
   const sessionResponseTimesRef = useRef([]);
   const revealedAtRef           = useRef(null); // performance.now() when question shown
+  const answerInFlightRef       = useRef(false); // prevents duplicate writes from rapid double-clicks
   const reviewsStateMapRef      = useRef(new Map()); // word_id → word_reviews_state row
   const lastFsrsUndoRef         = useRef(null); // undo info for go-back
   const dailyNewCountRef        = useRef(null); // null = unfetched; number = today's new-card count
@@ -657,8 +658,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     setHasChanged(false);
     setTypedAnswer('');
     setCollisionInfo(null);
-    lastFsrsUndoRef.current = null; // clear stale undo from previous card
-    revealedAtRef.current = null;  // reset; timer starts on input focus (Hard mode)
+    lastFsrsUndoRef.current = null;  // clear stale undo from previous card
+    revealedAtRef.current = null;    // reset; timer starts on input focus (Hard mode)
+    answerInFlightRef.current = false; // allow answer on the new card
     setPhase('question');
   }
 
@@ -750,7 +752,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   // Response time is computed from revealedAtRef (set in startOrNext).
   const handleAnswer = useCallback(
     (type) => {
-      if (!current) return;
+      if (answerInFlightRef.current || !current) return;
+      answerInFlightRef.current = true;
 
       // Capture response time immediately — revealedAt was set when question was shown
       const responseTimeMs = revealedAtRef.current
