@@ -119,7 +119,7 @@ export default function StatsPage({ words, preferences }) {
     (async () => {
       const { data, error } = await supabase
         .from('word_reviews_state')
-        .select('word_id, state, review_count, stability, due_at')
+        .select('word_id, state, review_count, stability, difficulty, lapse_count, due_at')
         .eq('user_id', user.id)
         .eq('mode', fsrsMode);
       if (cancelled) return;
@@ -219,6 +219,25 @@ export default function StatsPage({ words, preferences }) {
 
     return { inReview, inLearning, untouched, dueToday, comfortable, avgStability, stateDistribution, stabilityHist };
   }, [fsrsRows, words, timezone]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Hardest words from FSRS (lapse_count primary, difficulty tiebreaker) ─
+  const hardestFsrs = useMemo(() => {
+    if (!fsrsRows) return null;
+    const wordMap = new Map(words.map(w => [w.id, w.word]));
+    return [...fsrsRows]
+      .filter(r => r.review_count >= 1)
+      .sort((a, b) => {
+        const lapsDiff = (b.lapse_count || 0) - (a.lapse_count || 0);
+        if (lapsDiff !== 0) return lapsDiff;
+        return (b.difficulty || 0) - (a.difficulty || 0);
+      })
+      .slice(0, 10)
+      .map(r => ({
+        word: wordMap.get(r.word_id) || '?',
+        lapses: r.lapse_count || 0,
+        difficulty: r.difficulty != null ? +r.difficulty.toFixed(1) : null,
+      }));
+  }, [fsrsRows, words]);
 
   // ── Today's activity from review_log ────────────────────────────────────
   const logMetrics = useMemo(() => {
@@ -491,22 +510,28 @@ export default function StatsPage({ words, preferences }) {
         <div className={styles.chartsRow}>
           <div className={styles.chartCard} translate="no">
             <h2 className={styles.chartTitle}>Hardest Words</h2>
-            <p className={styles.chartSub}>Lowest memorization % (3+ attempts required)</p>
-            {legacyStats.hardest.length === 0 ? (
+            <p className={styles.chartSub}>Most forgotten · sorted by lapse count then difficulty</p>
+            {!hardestFsrs ? (
+              <div className={styles.chartEmpty}><p>Loading…</p></div>
+            ) : hardestFsrs.length === 0 ? (
               <div className={styles.chartEmpty}>
-                <p>Complete some quizzes to see your weakest words.</p>
+                <p>No reviewed words yet. Complete some quizzes to see your hardest words.</p>
               </div>
             ) : (
-              <ResponsiveContainer width="100%" height={Math.max(legacyStats.hardest.length * 28, 80)}>
-                <BarChart data={legacyStats.hardest} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
-                  <XAxis type="number" domain={[0,100]} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickFormatter={n => `${n}%`} />
+              <ResponsiveContainer width="100%" height={Math.max(hardestFsrs.length * 28, 80)}>
+                <BarChart data={hardestFsrs} layout="vertical" margin={{ top: 0, right: 40, left: 0, bottom: 0 }}>
+                  <XAxis type="number" allowDecimals={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickFormatter={n => `${n}×`} />
                   <YAxis type="category" dataKey="word" width={110} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip
                     contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
-                    formatter={val => [`${val}%`, 'Memory']}
+                    formatter={(val, name, props) => {
+                      const d = props.payload?.difficulty;
+                      const lines = [`${val} lapse${val !== 1 ? 's' : ''}`, `Difficulty: ${d ?? '—'}`];
+                      return [lines.join(' · '), ''];
+                    }}
                     cursor={{ fill: 'var(--bg-hover)' }}
                   />
-                  <Bar dataKey="mem" fill="var(--terracotta)" radius={[0,4,4,0]} />
+                  <Bar dataKey="lapses" fill="var(--terracotta)" radius={[0,4,4,0]} />
                 </BarChart>
               </ResponsiveContainer>
             )}
