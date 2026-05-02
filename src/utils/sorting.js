@@ -75,8 +75,8 @@ function sorter(sortBy, mistakeTimestamps) {
     case 'alpha-desc':   return (a, b) => b.word.localeCompare(a.word);
     case 'level-asc':    return (a, b) => (LEVEL_ORDER[a.recommended_level] ?? 99) - (LEVEL_ORDER[b.recommended_level] ?? 99);
     case 'level-desc':   return (a, b) => (LEVEL_ORDER[b.recommended_level] ?? 99) - (LEVEL_ORDER[a.recommended_level] ?? 99);
-    case 'date-newest':  return (a, b) => new Date(b.date_added) - new Date(a.date_added);
-    case 'date-oldest':  return (a, b) => new Date(a.date_added) - new Date(b.date_added);
+    case 'date-newest':  return (a, b) => b.id - a.id;
+    case 'date-oldest':  return (a, b) => a.id - b.id;
     case 'weakest':
       return (a, b) => {
         const ma = memorizationLevel(a), mb = memorizationLevel(b);
