@@ -1807,8 +1807,8 @@ function QuizCard({
                       title="Look up missing translations"
                     >
                       {fillTranslationsLoading
-                        ? <span className={styles.fillTransSpinner} />
-                        : '🌐'}
+                        ? <><span className={styles.fillTransSpinner} /><span className={styles.fillTransBtnText}> Loading…</span></>
+                        : '🌐 Tap to load'}
                     </button>
                   )}
                 </div>

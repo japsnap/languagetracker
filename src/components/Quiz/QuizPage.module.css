@@ -442,22 +442,24 @@
 .fillTransBtn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  gap: 0.25rem;
   padding: 3px 8px;
   border: 1px dashed var(--border);
   border-radius: 4px;
   background: transparent;
   color: var(--text-muted);
   font-size: 0.78rem;
+  font-family: var(--font-body);
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
-  min-width: 28px;
+  white-space: nowrap;
 }
 .fillTransBtn:hover:not(:disabled) {
   border-color: var(--gold);
   color: var(--gold);
 }
 .fillTransBtn:disabled { opacity: 0.6; cursor: default; }
+.fillTransBtnText { font-size: 0.75rem; }
 
 @keyframes fillTransSpin {
   to { transform: rotate(360deg); }
