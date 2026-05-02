@@ -31,6 +31,12 @@ const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak:
 
 const NON_LATIN = new Set(['ja', 'ko', 'zh', 'ur', 'hi']);
 
+// Session limit constants — module-level so a future config can override without rewriting the flow.
+const SESSION_LIMITS         = { easy: 30, hard: 20 };
+const SESSION_EXTENSION      = 10;
+const SESSION_HARD_CAP       = 100;
+const COFFEE_FEATURES_ENABLED = false;
+
 // ---------------------------------------------------------------------------
 // Answer matching helpers (unchanged — see .claude/rules/quiz-answer-matching.md)
 // ---------------------------------------------------------------------------
@@ -345,6 +351,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   const [doneReason, setDoneReason] = useState(null);
   const [fsrsDueCount, setFsrsDueCount] = useState(null); // due cards for header badge
   const [secTranslations, setSecTranslations] = useState([]); // secondary lang chips for Easy mode revealed
+  const [sessionElapsedMs, setSessionElapsedMs] = useState(null); // ms elapsed at session-complete
 
   // ── FSRS / session refs (all reads in async fns go through refs) ──────────
   const sessionIdRef            = useRef(null);
@@ -368,6 +375,14 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     weights: preferences?.fsrs_weights ?? null,
     timezone: preferences?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
   });
+
+  // ── Session limit refs ──────────────────────────────────────────────────────
+  const sessionCardCountRef      = useRef(0);
+  const sessionLimitRef          = useRef(null);  // null until first card; set to SESSION_LIMITS[mode]
+  const sessionStartTimeRef      = useRef(null);  // Date.now() on first card shown
+  const sessionGraduatedRef      = useRef([]);    // {id, word, meaning} — learning/relearning→review
+  const sessionWeakRef           = useRef([]);    // {id, word, meaning} — grade='again'
+  const sessionGradeBreakdownRef = useRef({});    // grade → count
 
   // ── keep refs current ────────────────────────────────────────────────────
   useEffect(() => { userIdRef.current = user?.id ?? null; }, [user?.id]);
@@ -699,6 +714,20 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     sessionReviewCountRef.current++;
     if (isCorrect) sessionCorrectCountRef.current++;
     if (responseTimeMs > 0) sessionResponseTimesRef.current.push(responseTimeMs);
+
+    // Session stats tracking (grade breakdown, weak words, graduated words)
+    sessionGradeBreakdownRef.current[grade] = (sessionGradeBreakdownRef.current[grade] || 0) + 1;
+    if (grade === 'again') {
+      if (!sessionWeakRef.current.some(w => w.id === word.id)) {
+        sessionWeakRef.current.push({ id: word.id, word: word.word, meaning: word.meaning || '' });
+      }
+    }
+    const stateBefore = currentState?.state ?? null;
+    if ((stateBefore === 'learning' || stateBefore === 'relearning') && stateAfter.next_state === 'review') {
+      if (!sessionGraduatedRef.current.some(w => w.id === word.id)) {
+        sessionGraduatedRef.current.push({ id: word.id, word: word.word, meaning: word.meaning || '' });
+      }
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -723,6 +752,21 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   // ---------------------------------------------------------------------------
 
   function startOrNext() {
+    // Initialize session limit and start time on the very first card of each session
+    if (sessionLimitRef.current === null) {
+      sessionLimitRef.current = SESSION_LIMITS[quizMode] ?? SESSION_LIMITS.easy;
+      sessionStartTimeRef.current = Date.now();
+    }
+
+    // Check session limit before pulling next card
+    const nextCardNum = sessionCardCountRef.current + 1;
+    if (nextCardNum > sessionLimitRef.current) {
+      setSessionElapsedMs(Date.now() - sessionStartTimeRef.current);
+      setDoneReason('session_limit');
+      setPhase('done');
+      return;
+    }
+
     // Lazy-fetch daily new count once per session (fire-and-forget; 0 used until resolved)
     if (dailyNewCountRef.current === null) {
       dailyNewCountRef.current = 0; // optimistic default so quiz doesn't block
@@ -749,6 +793,10 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       setPhase('done');
       return;
     }
+
+    // Commit card count only when a card was actually found
+    sessionCardCountRef.current = nextCardNum;
+
     if (current !== null) {
       setPrevEntry({ word: current, answer: lastAnswer, hasChanged, session, typedAnswer });
       setCanGoBack(true);
@@ -767,6 +815,17 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     revealedAtRef.current = null;    // reset; timer starts on input focus (Hard mode)
     answerInFlightRef.current = false; // allow answer on the new card
     setPhase('question');
+  }
+
+  function handleEndSession() {
+    setSessionElapsedMs(Date.now() - (sessionStartTimeRef.current ?? Date.now()));
+    setDoneReason('session_limit');
+    setPhase('done');
+  }
+
+  function handleExtendSession() {
+    sessionLimitRef.current = Math.min(sessionCardCountRef.current + SESSION_EXTENSION, SESSION_HARD_CAP);
+    startOrNext();
   }
 
   function handleGoBack() {
@@ -996,6 +1055,14 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     lastFsrsUndoRef.current = null;
     dailyNewCountRef.current = null; // re-fetch from DB on next session start
     clearTimeout(inactivityTimerRef.current);
+    // Reset session limit state
+    sessionCardCountRef.current = 0;
+    sessionLimitRef.current = null;
+    sessionStartTimeRef.current = null;
+    sessionGraduatedRef.current = [];
+    sessionWeakRef.current = [];
+    sessionGradeBreakdownRef.current = {};
+    setSessionElapsedMs(null);
   }
 
   const reviewed = session.correct + session.wrong + session.notSure;
@@ -1166,6 +1233,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
           <span className={`${styles.statItem} ${styles.statWrong}`}>❌ <strong>{session.wrong}</strong></span>
           <span className={`${styles.statItem} ${styles.statNotSure}`}>🤔 <strong>{session.notSure}</strong></span>
           <span className={styles.statItem}>Streak: <strong>{session.streak}</strong></span>
+          {(phase === 'question' || phase === 'revealed') && (
+            <button className={styles.endSessionBtn} onClick={handleEndSession}>End session</button>
+          )}
         </div>
       )}
 
@@ -1206,7 +1276,21 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
             />
           )}
 
-          {phase === 'done' && (
+          {phase === 'done' && doneReason === 'session_limit' && (
+            <SessionCompleteScreen
+              session={session}
+              reviewed={reviewed}
+              sessionElapsedMs={sessionElapsedMs}
+              sessionGraduated={sessionGraduatedRef.current}
+              sessionWeak={sessionWeakRef.current}
+              sessionGradeBreakdown={sessionGradeBreakdownRef.current}
+              canExtend={sessionLimitRef.current < SESSION_HARD_CAP}
+              onExtend={handleExtendSession}
+              onRestart={restart}
+            />
+          )}
+
+          {phase === 'done' && doneReason !== 'session_limit' && (
             <DoneScreen
               session={session}
               reviewed={reviewed}
@@ -1570,6 +1654,83 @@ function DoneScreen({ session, reviewed, onRestart, doneReason, onSwitchMode }) 
 }
 
 function SummaryStat({ label, value, color }) {
+  return (
+    <div className={styles.summaryStat}>
+      <span className={styles.summaryValue} style={color ? { color } : {}}>{value}</span>
+      <span className={styles.summaryLabel}>{label}</span>
+    </div>
+  );
+}
+
+function SessionCompleteScreen({ session, reviewed, sessionElapsedMs, sessionGraduated, sessionWeak, sessionGradeBreakdown, canExtend, onExtend, onRestart }) {
+  const secs   = Math.floor((sessionElapsedMs || 0) / 1000);
+  const mins   = Math.floor(secs / 60);
+  const remSec = secs % 60;
+  const timeStr = `${mins}:${String(remSec).padStart(2, '0')}`;
+  const acc = reviewed > 0 ? Math.round(session.correct / reviewed * 100) : 0;
+
+  return (
+    <div className={styles.sessionComplete}>
+      <div className={styles.sessionCompleteIcon}>🏁</div>
+      <h2 className={styles.sessionCompleteTitle}>Session Complete</h2>
+
+      <div className={styles.sessionStats}>
+        <SessionStat label="Cards" value={reviewed} />
+        <SessionStat label="Accuracy" value={`${acc}%`} color={acc >= 70 ? '#4caf79' : '#e07070'} />
+        <SessionStat label="Time" value={timeStr} />
+        <SessionStat label="Graduated" value={sessionGraduated.length} color={sessionGraduated.length > 0 ? '#4caf79' : undefined} />
+        <SessionStat label="Weak words" value={sessionWeak.length} color={sessionWeak.length > 0 ? '#e07070' : undefined} />
+      </div>
+
+      {COFFEE_FEATURES_ENABLED && (
+        <div className={styles.sessionAdvanced}>
+          {Object.keys(sessionGradeBreakdown).length > 0 && (
+            <div className={styles.sessionGradeBreakdown}>
+              {['easy', 'good', 'hard', 'again'].filter(g => sessionGradeBreakdown[g]).map(g => (
+                <span key={g} className={`${styles.sessionGradeChip} ${styles[`gradeChip_${g}`]}`}>
+                  {g}: {sessionGradeBreakdown[g]}
+                </span>
+              ))}
+            </div>
+          )}
+          {sessionGraduated.length > 0 && (
+            <div className={styles.sessionWordSection}>
+              <div className={styles.sessionWordListTitle}>Graduated</div>
+              <div className={styles.sessionWordList}>
+                {sessionGraduated.map(w => (
+                  <span key={w.id} className={`${styles.sessionWordChip} ${styles.sessionWordChipGrad}`} title={w.meaning}>{w.word}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {sessionWeak.length > 0 && (
+            <div className={styles.sessionWordSection}>
+              <div className={styles.sessionWordListTitle}>Weak words</div>
+              <div className={styles.sessionWordList}>
+                {sessionWeak.map(w => (
+                  <span key={w.id} className={`${styles.sessionWordChip} ${styles.sessionWordChipWeak}`} title={w.meaning}>{w.word}</span>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className={styles.sessionCompleteActions}>
+        {canExtend ? (
+          <button className={styles.extendBtn} onClick={onExtend}>
+            Keep going? +{SESSION_EXTENSION} more
+          </button>
+        ) : (
+          <p className={styles.sessionHardCapMsg}>Hard cap reached ({SESSION_HARD_CAP} cards)</p>
+        )}
+        <button className={styles.startBtn} onClick={onRestart}>Start new session</button>
+      </div>
+    </div>
+  );
+}
+
+function SessionStat({ label, value, color }) {
   return (
     <div className={styles.summaryStat}>
       <span className={styles.summaryValue} style={color ? { color } : {}}>{value}</span>

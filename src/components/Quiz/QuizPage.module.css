@@ -612,6 +612,126 @@
 .collisionIcon { flex-shrink: 0; font-size: 1rem; margin-top: 0.05rem; }
 .collisionText { flex: 1; }
 
+/* ── End session button (in stats strip) ────────────────────────────────────── */
+
+.endSessionBtn {
+  margin-left: auto;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+.endSessionBtn:hover { border-color: var(--text-muted); color: var(--text-primary); }
+
+/* ── Session complete screen ─────────────────────────────────────────────────── */
+
+.sessionComplete {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.25rem;
+  padding: 2.5rem 1.5rem 2rem;
+  max-width: 480px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.sessionCompleteIcon { font-size: 2.75rem; line-height: 1; }
+.sessionCompleteTitle { font-family: var(--font-heading); font-size: 1.65rem; font-weight: 700; margin: 0; color: var(--text-primary); }
+
+.sessionStats {
+  display: flex;
+  gap: 1.25rem 1.75rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 1.25rem 1.75rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  width: 100%;
+}
+
+/* SessionStat reuses .summaryStat, .summaryValue, .summaryLabel */
+
+.sessionCompleteActions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.extendBtn {
+  padding: 0.65rem 1.75rem;
+  background: transparent;
+  border: 2px solid var(--gold);
+  border-radius: var(--radius-lg);
+  color: var(--gold);
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: var(--font-heading);
+}
+.extendBtn:hover { background: var(--gold-bg); }
+
+.sessionHardCapMsg {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
+/* Advanced section (gated by COFFEE_FEATURES_ENABLED) */
+.sessionAdvanced {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  text-align: left;
+}
+
+.sessionGradeBreakdown {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.sessionGradeChip {
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 4px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+}
+.gradeChip_easy  { color: #4caf79; border-color: #4caf79; }
+.gradeChip_again { color: #e07070; border-color: #e07070; }
+.gradeChip_hard  { color: #e8a44a; border-color: #e8a44a; }
+
+.sessionWordSection { display: flex; flex-direction: column; gap: 0.35rem; }
+.sessionWordListTitle { font-size: 0.72rem; font-weight: 700; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; }
+.sessionWordList { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+
+.sessionWordChip {
+  font-size: 0.82rem;
+  padding: 3px 9px;
+  border-radius: 4px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  cursor: default;
+}
+.sessionWordChipGrad { border-color: #4caf79; color: #4caf79; }
+.sessionWordChipWeak { border-color: #e07070; color: #e07070; }
+
 @media (max-width: 640px) {
   .answerButtons { flex-direction: column; }
   .cardWord { padding: 1rem 0 0.4rem; }
