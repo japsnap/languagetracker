@@ -398,6 +398,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   useEffect(() => { onDueCountChangeRef.current = onDueCountChange; }, [onDueCountChange]);
   const secTranslationsRef = useRef([]); // stable copy for handleFillTranslations
   useEffect(() => { secTranslationsRef.current = secTranslations; }, [secTranslations]);
+  const cardIdRef = useRef(null); // tracks current card id; fill-translations checks this before merging
+  useEffect(() => { cardIdRef.current = current?.id ?? null; }, [current?.id]);
   useEffect(() => {
     fsrsPrefsRef.current = {
       desiredRetention: preferences?.desired_retention ?? 0.80,
@@ -593,6 +595,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   // ── Fill translations — fires lookupSecondary for each missing chip lang ──
   const handleFillTranslations = useCallback(async () => {
     if (!current || fillTranslationsLoading) return;
+    const initiatingCardId = cardIdRef.current; // captured at call time; checked before each merge
     const missingLangs = chipCandidateLangs
       .filter(l => !secTranslationsRef.current.some(c => c.lang === l))
       .slice(0, 3);
@@ -634,6 +637,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         try {
           const result = await lookupSecondary(inputWord, inputLang, secLang, primaryLang);
           if (!result?.word) return;
+          if (cardIdRef.current !== initiatingCardId) return; // user advanced; discard, cache write already landed
           const langObj = SUPPORTED_LANGUAGES.find(l => l.code === secLang);
           if (!langObj) return;
           setSecTranslations(prev => {
