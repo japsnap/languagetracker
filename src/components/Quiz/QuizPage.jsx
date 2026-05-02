@@ -434,20 +434,6 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     const candidateLangSet  = new Set(candidateLangs);
     if (!candidateLangs.length) { setSecTranslations([]); return; }
 
-    // [DIAG] entry point
-    const wordsWithSessionId = words.filter(w => w.lookup_session_id != null).length;
-    console.log('[chips][entry]', {
-      word: current.word,
-      wordLang,
-      wordNorm,
-      lookup_session_id: current.lookup_session_id,
-      learningLang,
-      secLangs,
-      candidateLangs,
-      totalWords: words.length,
-      wordsWithSessionId,
-    });
-
     // ── Path 1: vocabulary siblings (same lookup_session_id, different word_language)
     // Instant — data already in the words prop. Works for polyglot saves (tags=['polyglot'])
     // added in the same Input lookup session since lookup_session_id was introduced.
@@ -470,12 +456,10 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         }
       }
     }
-    console.log('[chips][path1]', { found: vocabChips.length, chips: vocabChips });
     if (vocabChips.length > 0) setSecTranslations(vocabChips);
 
     // ── Path 2: word_cache lookup for langs not covered by vocab siblings
     const remainingLangs = candidateLangs.filter(l => !coveredLangs.has(l));
-    console.log('[chips][path2-start]', { remainingLangs });
     if (!remainingLangs.length) return;
 
     let cancelled = false;
@@ -513,19 +497,6 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         const inputLang   = primRow?.input_language ?? wordLang;
         const primaryLang = primRow?.primary_language ?? (preferences?.primary_language || 'en');
 
-        console.log('[chips][path2-primary]', {
-          narrowQuery: { result_word_ilike: wordNorm, learning_language: wordLang, mode: 'single' },
-          narrowFound: primNarrow?.length ?? 0,
-          narrowErr: primNarrowErr,
-          looseAttempted: !primNarrow?.[0],
-          looseRows: primLoose,
-          looseErr: primLooseErr,
-          primRowUsed: primRow,
-          resolvedInputWord: inputWord,
-          resolvedInputLang: inputLang,
-          resolvedPrimaryLang: primaryLang,
-        });
-
         // Step 2: fetch remaining secondary lang rows in parallel
         const results = await Promise.all(
           remainingLangs.map(secLang =>
@@ -544,13 +515,6 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
 
         if (cancelled) return;
 
-        console.log('[chips][path2-secondary]', results.map(r => ({
-          secLang: r.secLang,
-          rowFound: !!(r.data?.[0]?.result_word),
-          result_word: r.data?.[0]?.result_word ?? null,
-          error: r.error ?? null,
-        })));
-
         const cacheChips = results
           .map(({ data, secLang }) => {
             const row = data?.[0];
@@ -561,8 +525,6 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
             return { lang: secLang, flag: langObj.flag, word: row.result_word, romanization: resp.romanization || null, kana_reading: resp.kana_reading || null };
           })
           .filter(Boolean);
-
-        console.log('[chips][path2-result]', { cacheChips });
 
         if (cacheChips.length > 0) {
           setSecTranslations(prev => {
