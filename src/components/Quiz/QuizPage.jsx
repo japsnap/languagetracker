@@ -474,29 +474,46 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     let cancelled = false;
     (async () => {
       try {
-        // Step 1: find primary cache row to get the original input_word.
-        // ilike handles any case variation in result_word.
-        // Fallback: if not found, use the quiz word itself as input_word
-        // (covers direct lookups where input_language = learning_language).
-        const { data: primRows, error: primErr } = await supabase
+        // Step 1a: narrow query — result_word + learning_language + mode='single'
+        const { data: primNarrow, error: primNarrowErr } = await supabase
           .from('word_cache')
-          .select('input_word, input_language, primary_language')
+          .select('input_word, input_language, primary_language, mode, learning_language')
           .ilike('result_word', wordNorm)
           .eq('learning_language', wordLang)
           .eq('mode', 'single')
           .limit(1);
 
         if (cancelled) return;
-        const primRow = primRows?.[0];
-        const inputWord = primRow?.input_word ?? wordNorm;
-        const inputLang = primRow?.input_language ?? wordLang;
+
+        // Step 1b: loose query — result_word ilike only, no mode/language filter.
+        // Runs only when narrow finds nothing. Catches rows cached under 'multi',
+        // old 'secondary', or with a different learning_language than expected.
+        let primLoose = null;
+        let primLooseErr = null;
+        if (!primNarrow?.[0]) {
+          const res = await supabase
+            .from('word_cache')
+            .select('input_word, input_language, primary_language, mode, learning_language')
+            .ilike('result_word', wordNorm)
+            .limit(5);
+          if (cancelled) return;
+          primLoose = res.data;
+          primLooseErr = res.error;
+        }
+
+        const primRow = primNarrow?.[0] ?? primLoose?.[0] ?? null;
+        const inputWord   = primRow?.input_word    ?? wordNorm;
+        const inputLang   = primRow?.input_language ?? wordLang;
         const primaryLang = primRow?.primary_language ?? (preferences?.primary_language || 'en');
 
         console.log('[chips][path2-primary]', {
-          query: { result_word_ilike: wordNorm, learning_language: wordLang, mode: 'single' },
-          primRowFound: !!primRow,
-          primRow,
-          primErr,
+          narrowQuery: { result_word_ilike: wordNorm, learning_language: wordLang, mode: 'single' },
+          narrowFound: primNarrow?.length ?? 0,
+          narrowErr: primNarrowErr,
+          looseAttempted: !primNarrow?.[0],
+          looseRows: primLoose,
+          looseErr: primLooseErr,
+          primRowUsed: primRow,
           resolvedInputWord: inputWord,
           resolvedInputLang: inputLang,
           resolvedPrimaryLang: primaryLang,
