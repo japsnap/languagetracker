@@ -10,6 +10,7 @@ import TagBar from '../TagBar/TagBar';
 import { logEvent } from '../../utils/events';
 import { scheduleReview, buildReviewLogRow, inferGradeHardMode, inferGradeEasyMode } from '../../utils/fsrs';
 import { logInterferenceEvent } from '../../utils/interference';
+import { lookupSecondary } from '../../utils/anthropic';
 import ExploreMode from './ExploreMode';
 import styles from './QuizPage.module.css';
 
@@ -351,7 +352,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   const [doneReason, setDoneReason] = useState(null);
   const [fsrsDueCount, setFsrsDueCount] = useState(null); // due cards for header badge
   const [secTranslations, setSecTranslations] = useState([]); // secondary lang chips for Easy mode revealed
+  const [fillTranslationsLoading, setFillTranslationsLoading] = useState(false);
   const [sessionElapsedMs, setSessionElapsedMs] = useState(null); // ms elapsed at session-complete
+  const [filtersCollapsed, setFiltersCollapsed] = useState(false); // mobile-only collapse; auto-collapses after first card
 
   // ── FSRS / session refs (all reads in async fns go through refs) ──────────
   const sessionIdRef            = useRef(null);
@@ -388,6 +391,8 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   useEffect(() => { userIdRef.current = user?.id ?? null; }, [user?.id]);
   useEffect(() => { quizModeRef.current = quizMode; }, [quizMode]);
   useEffect(() => { onDueCountChangeRef.current = onDueCountChange; }, [onDueCountChange]);
+  const secTranslationsRef = useRef([]); // stable copy for handleFillTranslations
+  useEffect(() => { secTranslationsRef.current = secTranslations; }, [secTranslations]);
   useEffect(() => {
     fsrsPrefsRef.current = {
       desiredRetention: preferences?.desired_retention ?? 0.80,
@@ -395,6 +400,15 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       timezone: preferences?.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
     };
   }, [preferences]);
+
+  // ── Auto-collapse filters on mobile when first card appears ──────────────
+  const prevPhaseRef = useRef('idle');
+  useEffect(() => {
+    if (prevPhaseRef.current === 'idle' && phase === 'question') {
+      setFiltersCollapsed(true);
+    }
+    prevPhaseRef.current = phase;
+  }, [phase]);
 
   // ── Enter key advances on revealed phase ─────────────────────────────────
   const startOrNextRef = useRef(null);
@@ -422,15 +436,11 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       setSecTranslations([]);
       return;
     }
-    const secLangs    = (preferences?.secondary_languages || []).slice(0, 4);
     const learningLang = preferences?.learning_language || 'es';
     const wordLang    = current.word_language || learningLang;
     const wordNorm    = current.word.toLowerCase().trim();
 
-    // Candidate langs = secondary langs + learning lang, deduped, minus the card's own lang.
-    // This ensures: (a) the card's language is never shown as a chip; (b) when the card is
-    // a secondary-language word (e.g. Urdu), the learning language (e.g. ES) is also shown.
-    const candidateLangs    = [...new Set([...secLangs, learningLang])].filter(l => l !== wordLang);
+    const candidateLangs    = chipCandidateLangs;
     const candidateLangSet  = new Set(candidateLangs);
     if (!candidateLangs.length) { setSecTranslations([]); return; }
 
@@ -548,6 +558,79 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       langFilterAutoSet.current = true;
     }
   }, [preferences?.learning_language]);
+
+  // ── Chip candidate languages for current card (Easy mode) ────────────────
+  // Shared between the chips useEffect and handleFillTranslations.
+  const chipCandidateLangs = useMemo(() => {
+    if (!current || quizMode !== 'easy') return [];
+    const secLangs     = (preferences?.secondary_languages || []).slice(0, 4);
+    const learningLang = preferences?.learning_language || 'es';
+    const wordLang     = current.word_language || learningLang;
+    return [...new Set([...secLangs, learningLang])].filter(l => l !== wordLang);
+  }, [current?.id, quizMode, preferences?.secondary_languages, preferences?.learning_language]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Reset fill-translations state when the card changes
+  useEffect(() => { setFillTranslationsLoading(false); }, [current?.id]);
+
+  // ── Fill translations — fires lookupSecondary for each missing chip lang ──
+  const handleFillTranslations = useCallback(async () => {
+    if (!current || fillTranslationsLoading) return;
+    const missingLangs = chipCandidateLangs
+      .filter(l => !secTranslationsRef.current.some(c => c.lang === l))
+      .slice(0, 3);
+    if (!missingLangs.length) return;
+
+    setFillTranslationsLoading(true);
+
+    const wordNorm    = current.word.toLowerCase().trim();
+    const wordLang    = current.word_language || preferences?.learning_language || 'es';
+    const primaryLang = preferences?.primary_language || 'en';
+
+    // Resolve the primary cache row to get the canonical input_word / input_language
+    let inputWord = wordNorm;
+    let inputLang = wordLang;
+    try {
+      const { data: narrow } = await supabase
+        .from('word_cache')
+        .select('input_word, input_language')
+        .ilike('result_word', wordNorm)
+        .eq('learning_language', wordLang)
+        .eq('mode', 'single')
+        .limit(1);
+      if (narrow?.[0]) {
+        inputWord = narrow[0].input_word;
+        inputLang = narrow[0].input_language;
+      } else {
+        const { data: loose } = await supabase
+          .from('word_cache')
+          .select('input_word, input_language')
+          .ilike('result_word', wordNorm)
+          .limit(1);
+        if (loose?.[0]) { inputWord = loose[0].input_word; inputLang = loose[0].input_language; }
+      }
+    } catch { /* continue with defaults */ }
+
+    // Fire all lookups in parallel — fire-and-forget; advancing card is fine
+    Promise.all(
+      missingLangs.map(async secLang => {
+        try {
+          const result = await lookupSecondary(inputWord, inputLang, secLang, primaryLang);
+          if (!result?.word) return;
+          const langObj = SUPPORTED_LANGUAGES.find(l => l.code === secLang);
+          if (!langObj) return;
+          setSecTranslations(prev => {
+            if (prev.some(c => c.lang === secLang)) return prev;
+            return [...prev, {
+              lang: secLang, flag: langObj.flag, word: result.word,
+              romanization: result.romanization || null, kana_reading: result.kana_reading || null,
+            }];
+          });
+        } catch (err) {
+          console.error('[fill-translations] failed for', secLang, err);
+        }
+      })
+    ).finally(() => setFillTranslationsLoading(false));
+  }, [current, chipCandidateLangs, fillTranslationsLoading, preferences]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Computed pools ────────────────────────────────────────────────────────
   const vocabLangs = useMemo(
@@ -1080,6 +1163,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     // Reset session limit state
     sessionCardCountRef.current = 0;
     sessionLimitRef.current = null;
+    // Reset filter collapse so auto-fold fires again on next session start
+    prevPhaseRef.current = 'idle';
+    setFiltersCollapsed(false);
     sessionStartTimeRef.current = null;
     sessionGraduatedRef.current = [];
     sessionWeakRef.current = [];
@@ -1092,6 +1178,25 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     ? SUPPORTED_LANGUAGES.find(l => l.code === current.word_language)?.flag
     : null;
 
+  // Filter summary line shown when collapsed on mobile
+  const filterSummary = useMemo(() => {
+    if (exploreMode) return 'Explore mode';
+    const parts = [];
+    if (langFilter) {
+      const lObj = SUPPORTED_LANGUAGES.find(l => l.code === langFilter);
+      parts.push(`${lObj?.flag ?? ''} ${langFilter.toUpperCase()}`);
+    } else {
+      parts.push('All languages');
+    }
+    if (settings.levels.length > 0) {
+      parts.push(settings.levels.join('/'));
+    } else {
+      parts.push('All levels');
+    }
+    parts.push(`${pool.length} word${pool.length !== 1 ? 's' : ''}`);
+    return parts.join(' · ');
+  }, [exploreMode, langFilter, settings.levels, pool.length]);
+
   // ---------------------------------------------------------------------------
   // Render
   // ---------------------------------------------------------------------------
@@ -1101,150 +1206,169 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       {/* Settings strip */}
       <div className={styles.settingsStrip}>
 
-        {/* FSRS Queue toggle — Due / All / New (session-only, not persisted) */}
-        {!exploreMode && (
+        {/* Mobile toggle bar — only visible on mobile */}
+        <button
+          className={styles.filtersToggleBar}
+          onClick={() => setFiltersCollapsed(c => !c)}
+          aria-expanded={!filtersCollapsed}
+        >
+          <span className={styles.filtersToggleLabel}>
+            {filtersCollapsed ? `Filters ▼` : `Filters ▲`}
+          </span>
+          {filtersCollapsed && (
+            <span className={styles.filtersSummary}>{filterSummary}</span>
+          )}
+        </button>
+
+        {/* Filter groups — hidden on mobile when collapsed */}
+        <div className={`${styles.filtersBody} ${filtersCollapsed ? styles.filtersBodyCollapsed : ''}`}>
+
+          {/* FSRS Queue toggle — Due / All / New (session-only, not persisted) */}
+          {!exploreMode && (
+            <div className={styles.settingsGroup}>
+              <span className={styles.settingsLabel}>Queue:</span>
+              <button
+                className={`${styles.levelBtn} ${fsrsMode === 'due' ? styles.levelActive : ''}`}
+                onClick={() => { setFsrsMode('due'); if (phase !== 'idle') restart(); }}
+              >
+                Due
+                {fsrsDueCount !== null && fsrsDueCount > 0 && (
+                  <span className={styles.queueDueBadge}>{fsrsDueCount > 99 ? '99+' : fsrsDueCount}</span>
+                )}
+              </button>
+              <button
+                className={`${styles.levelBtn} ${fsrsMode === 'all' ? styles.levelActive : ''}`}
+                onClick={() => { setFsrsMode('all'); if (phase !== 'idle') restart(); }}
+              >
+                All
+              </button>
+              <button
+                className={`${styles.levelBtn} ${fsrsMode === 'new' ? styles.levelActive : ''}`}
+                onClick={() => { setFsrsMode('new'); if (phase !== 'idle') restart(); }}
+              >
+                New
+              </button>
+            </div>
+          )}
+
+          {/* Mode toggle — Easy / Hard / Explore */}
           <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Queue:</span>
+            <span className={styles.settingsLabel}>Mode:</span>
             <button
-              className={`${styles.levelBtn} ${fsrsMode === 'due' ? styles.levelActive : ''}`}
-              onClick={() => { setFsrsMode('due'); if (phase !== 'idle') restart(); }}
+              className={`${styles.levelBtn} ${!exploreMode && quizMode === 'easy' ? styles.levelActive : ''}`}
+              onClick={() => { setExploreMode(false); setQuizMode('easy'); }}
             >
-              Due
-              {fsrsDueCount !== null && fsrsDueCount > 0 && (
-                <span className={styles.queueDueBadge}>{fsrsDueCount > 99 ? '99+' : fsrsDueCount}</span>
-              )}
+              Easy
             </button>
             <button
-              className={`${styles.levelBtn} ${fsrsMode === 'all' ? styles.levelActive : ''}`}
-              onClick={() => { setFsrsMode('all'); if (phase !== 'idle') restart(); }}
+              className={`${styles.levelBtn} ${!exploreMode && quizMode === 'hard' ? styles.levelActive : ''}`}
+              onClick={() => { setExploreMode(false); setQuizMode('hard'); }}
             >
-              All
+              Hard
             </button>
             <button
-              className={`${styles.levelBtn} ${fsrsMode === 'new' ? styles.levelActive : ''}`}
-              onClick={() => { setFsrsMode('new'); if (phase !== 'idle') restart(); }}
+              className={`${styles.levelBtn} ${exploreMode ? styles.levelActive : ''}`}
+              onClick={() => setExploreMode(true)}
             >
-              New
+              Explore
             </button>
           </div>
-        )}
 
-        {/* Mode toggle — Easy / Hard / Explore */}
-        <div className={styles.settingsGroup}>
-          <span className={styles.settingsLabel}>Mode:</span>
-          <button
-            className={`${styles.levelBtn} ${!exploreMode && quizMode === 'easy' ? styles.levelActive : ''}`}
-            onClick={() => { setExploreMode(false); setQuizMode('easy'); }}
-          >
-            Easy
-          </button>
-          <button
-            className={`${styles.levelBtn} ${!exploreMode && quizMode === 'hard' ? styles.levelActive : ''}`}
-            onClick={() => { setExploreMode(false); setQuizMode('hard'); }}
-          >
-            Hard
-          </button>
-          <button
-            className={`${styles.levelBtn} ${exploreMode ? styles.levelActive : ''}`}
-            onClick={() => setExploreMode(true)}
-          >
-            Explore
-          </button>
+          {/* Language filter — only when vocabulary spans multiple languages */}
+          {!exploreMode && vocabLangs.length > 1 && (
+            <div className={styles.settingsGroup}>
+              <span className={styles.settingsLabel}>Language:</span>
+              <button
+                className={`${styles.levelBtn} ${langFilter === '' ? styles.levelActive : ''}`}
+                onClick={() => setLangFilter('')}
+              >
+                All
+              </button>
+              {vocabLangs.map(code => {
+                const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
+                return (
+                  <button
+                    key={code}
+                    className={`${styles.levelBtn} ${langFilter === code ? styles.levelActive : ''}`}
+                    onClick={() => setLangFilter(code === langFilter ? '' : code)}
+                    title={lang?.label}
+                  >
+                    {lang?.flag} {code.toUpperCase()}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {!exploreMode && (
+            <div className={styles.settingsGroup}>
+              <span className={styles.settingsLabel}>Level:</span>
+              <button
+                className={`${styles.levelBtn} ${settings.levels.length === 0 ? styles.levelActive : ''}`}
+                onClick={() => setSettings(s => ({ ...s, levels: [] }))}
+              >
+                All
+              </button>
+              {ALL_LEVELS.map(lvl => {
+                const active = settings.levels.includes(lvl);
+                return (
+                  <button
+                    key={lvl}
+                    className={`${styles.levelBtn} ${active ? styles.levelActive : ''}`}
+                    style={active ? { backgroundColor: LEVEL_COLORS[lvl], borderColor: LEVEL_COLORS[lvl], color: '#fff' } : {}}
+                    onClick={() => toggleLevel(lvl)}
+                  >
+                    {lvl}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          {!exploreMode && (
+            <div className={styles.settingsGroup}>
+              <span className={styles.settingsLabel}>Scene:</span>
+              <select
+                className={styles.sceneSelect}
+                value={settings.scene}
+                onChange={e => setSettings(s => ({ ...s, scene: e.target.value }))}
+              >
+                <option value="">All</option>
+                {SCENES.map(s => (
+                  <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {!exploreMode && (
+            <div className={styles.settingsGroup}>
+              <label className={styles.checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={settings.starredOnly}
+                  onChange={() => toggleSetting('starredOnly')}
+                />
+                Starred only
+              </label>
+              <label className={styles.checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={settings.includeMastered}
+                  onChange={() => toggleSetting('includeMastered')}
+                />
+                Include mastered
+              </label>
+            </div>
+          )}
+
+          {!exploreMode && (
+            <div className={styles.poolCount}>
+              Pool: <strong>{pool.length}</strong> word{pool.length !== 1 ? 's' : ''}
+            </div>
+          )}
+
         </div>
-
-        {/* Language filter — only when vocabulary spans multiple languages */}
-        {!exploreMode && vocabLangs.length > 1 && (
-          <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Language:</span>
-            <button
-              className={`${styles.levelBtn} ${langFilter === '' ? styles.levelActive : ''}`}
-              onClick={() => setLangFilter('')}
-            >
-              All
-            </button>
-            {vocabLangs.map(code => {
-              const lang = SUPPORTED_LANGUAGES.find(l => l.code === code);
-              return (
-                <button
-                  key={code}
-                  className={`${styles.levelBtn} ${langFilter === code ? styles.levelActive : ''}`}
-                  onClick={() => setLangFilter(code === langFilter ? '' : code)}
-                  title={lang?.label}
-                >
-                  {lang?.flag} {code.toUpperCase()}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {!exploreMode && (
-          <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Level:</span>
-            <button
-              className={`${styles.levelBtn} ${settings.levels.length === 0 ? styles.levelActive : ''}`}
-              onClick={() => setSettings(s => ({ ...s, levels: [] }))}
-            >
-              All
-            </button>
-            {ALL_LEVELS.map(lvl => {
-              const active = settings.levels.includes(lvl);
-              return (
-                <button
-                  key={lvl}
-                  className={`${styles.levelBtn} ${active ? styles.levelActive : ''}`}
-                  style={active ? { backgroundColor: LEVEL_COLORS[lvl], borderColor: LEVEL_COLORS[lvl], color: '#fff' } : {}}
-                  onClick={() => toggleLevel(lvl)}
-                >
-                  {lvl}
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {!exploreMode && (
-          <div className={styles.settingsGroup}>
-            <span className={styles.settingsLabel}>Scene:</span>
-            <select
-              className={styles.sceneSelect}
-              value={settings.scene}
-              onChange={e => setSettings(s => ({ ...s, scene: e.target.value }))}
-            >
-              <option value="">All</option>
-              {SCENES.map(s => (
-                <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
-              ))}
-            </select>
-          </div>
-        )}
-
-        {!exploreMode && (
-          <div className={styles.settingsGroup}>
-            <label className={styles.checkLabel}>
-              <input
-                type="checkbox"
-                checked={settings.starredOnly}
-                onChange={() => toggleSetting('starredOnly')}
-              />
-              Starred only
-            </label>
-            <label className={styles.checkLabel}>
-              <input
-                type="checkbox"
-                checked={settings.includeMastered}
-                onChange={() => toggleSetting('includeMastered')}
-              />
-              Include mastered
-            </label>
-          </div>
-        )}
-
-        {!exploreMode && (
-          <div className={styles.poolCount}>
-            Pool: <strong>{pool.length}</strong> word{pool.length !== 1 ? 's' : ''}
-          </div>
-        )}
       </div>
 
       {/* Session stats strip */}
@@ -1295,6 +1419,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
               learningLang={preferences?.learning_language || 'es'}
               primaryLang={preferences?.primary_language || 'en'}
               secTranslations={secTranslations}
+              chipCandidateLangs={chipCandidateLangs}
+              fillTranslationsLoading={fillTranslationsLoading}
+              onFillTranslations={handleFillTranslations}
             />
           )}
 
@@ -1363,7 +1490,7 @@ function QuizCard({
   word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode,
   typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer,
   onGoBack, onNext, onInputFocus, onUpdateWord, collisionInfo, learningLang, primaryLang,
-  secTranslations,
+  secTranslations, chipCandidateLangs, fillTranslationsLoading, onFillTranslations,
 }) {
   const inputRef = useRef(null);
 
@@ -1555,19 +1682,37 @@ function QuizCard({
               {word.other_useful_notes && <RevealField label="Notes"       value={word.other_useful_notes} />}
             </div>
 
-            {/* Secondary language chips — Easy mode only, cache-only, no API calls */}
-            {!isHard && secTranslations?.length > 0 && (
-              <div className={styles.secLangChips}>
-                {secTranslations.map(chip => (
-                  <span key={chip.lang} className={styles.secLangChip} translate="no">
-                    {chip.flag} {chip.word}
-                    {NON_LATIN.has(chip.lang) && (chip.kana_reading || chip.romanization) && (
-                      <span className={styles.secLangRoma}> {chip.kana_reading || chip.romanization}</span>
-                    )}
-                  </span>
-                ))}
-              </div>
-            )}
+            {/* Secondary language chips — Easy mode only */}
+            {!isHard && (() => {
+              const missingCount = (chipCandidateLangs || []).filter(l => !secTranslations?.some(c => c.lang === l)).length;
+              const showChips = secTranslations?.length > 0;
+              const showFillBtn = missingCount > 0;
+              if (!showChips && !showFillBtn) return null;
+              return (
+                <div className={styles.secLangChips}>
+                  {showChips && secTranslations.map(chip => (
+                    <span key={chip.lang} className={styles.secLangChip} translate="no">
+                      {chip.flag} {chip.word}
+                      {NON_LATIN.has(chip.lang) && (chip.kana_reading || chip.romanization) && (
+                        <span className={styles.secLangRoma}> {chip.kana_reading || chip.romanization}</span>
+                      )}
+                    </span>
+                  ))}
+                  {showFillBtn && (
+                    <button
+                      className={styles.fillTransBtn}
+                      onClick={onFillTranslations}
+                      disabled={fillTranslationsLoading}
+                      title="Look up missing translations"
+                    >
+                      {fillTranslationsLoading
+                        ? <span className={styles.fillTransSpinner} />
+                        : '🌐'}
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             <div className={styles.revealActions}>
               <button className={styles.nextBtn} onClick={onNext}>Next word →</button>
