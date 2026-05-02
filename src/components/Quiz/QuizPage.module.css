@@ -326,7 +326,29 @@
 
 .revealDivider { height: 1px; background: var(--border); margin: 0.5rem 0 1.25rem; }
 
-.revealGrid { display: flex; flex-direction: column; gap: 0.85rem; margin-bottom: 1.5rem; }
+.revealGrid { display: flex; flex-direction: column; gap: 0.85rem; margin-bottom: 1rem; }
+
+.secLangChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.secLangChip {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 8px;
+}
+
+.secLangRoma {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
 
 .revealField { display: flex; flex-direction: column; gap: 0.15rem; }
 

@@ -29,6 +29,8 @@ const ANSWER_ICONS = { easy: '🎯', correct: '✅', wrong: '❌', 'not-sure': '
 
 const EMPTY_SESSION = { correct: 0, wrong: 0, notSure: 0, streak: 0, bestStreak: 0 };
 
+const NON_LATIN = new Set(['ja', 'ko', 'zh', 'ur', 'hi']);
+
 // ---------------------------------------------------------------------------
 // Answer matching helpers (unchanged — see .claude/rules/quiz-answer-matching.md)
 // ---------------------------------------------------------------------------
@@ -342,6 +344,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
   const [fsrsMode, setFsrsMode] = useState('all'); // 'all' | 'due' | 'new' — session-only, not persisted
   const [doneReason, setDoneReason] = useState(null);
   const [fsrsDueCount, setFsrsDueCount] = useState(null); // due cards for header badge
+  const [secTranslations, setSecTranslations] = useState([]); // secondary lang chips for Easy mode revealed
 
   // ── FSRS / session refs (all reads in async fns go through refs) ──────────
   const sessionIdRef            = useRef(null);
@@ -397,6 +400,74 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       if (handler) document.removeEventListener('keydown', handler);
     };
   }, [phase]);
+
+  // ── Secondary language translation chips (Easy mode revealed) ───────────
+  useEffect(() => {
+    if (phase !== 'revealed' || quizMode !== 'easy' || !current) {
+      setSecTranslations([]);
+      return;
+    }
+    const secLangs = (preferences?.secondary_languages || []).slice(0, 4);
+    if (!secLangs.length) { setSecTranslations([]); return; }
+
+    let cancelled = false;
+    const wordLang = current.word_language || preferences?.learning_language || 'es';
+
+    (async () => {
+      try {
+        // Find the primary cache row to get the input_word used for this lookup
+        const { data: primRows } = await supabase
+          .from('word_cache')
+          .select('input_word, input_language, primary_language')
+          .eq('result_word', current.word)
+          .eq('learning_language', wordLang)
+          .eq('mode', 'single')
+          .limit(1);
+
+        if (cancelled) return;
+        const primRow = primRows?.[0];
+        if (!primRow) return; // no primary row — can't resolve secondary rows
+
+        // Fetch all secondary lang rows in parallel (cache-only, no API calls)
+        const results = await Promise.all(
+          secLangs.map(secLang =>
+            supabase
+              .from('word_cache')
+              .select('result_word, response')
+              .eq('input_word', primRow.input_word)
+              .eq('input_language', primRow.input_language)
+              .eq('learning_language', secLang)
+              .eq('primary_language', primRow.primary_language)
+              .eq('mode', 'single')
+              .limit(1)
+              .then(r => ({ ...r, secLang }))
+          )
+        );
+
+        if (cancelled) return;
+        const chips = results
+          .map(({ data, secLang }) => {
+            const row = data?.[0];
+            if (!row?.result_word) return null;
+            const langObj = SUPPORTED_LANGUAGES.find(l => l.code === secLang);
+            if (!langObj) return null;
+            const resp = row.response || {};
+            return {
+              lang: secLang,
+              flag: langObj.flag,
+              word: row.result_word,
+              romanization: resp.romanization || null,
+              kana_reading: resp.kana_reading || null,
+            };
+          })
+          .filter(Boolean);
+
+        setSecTranslations(chips);
+      } catch { /* no chips on error */ }
+    })();
+
+    return () => { cancelled = true; };
+  }, [phase, quizMode, current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Auto-set lang filter from preferences (once) ─────────────────────────
   const langFilterAutoSet = useRef(false);
@@ -1097,6 +1168,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
               collisionInfo={collisionInfo}
               learningLang={preferences?.learning_language || 'es'}
               primaryLang={preferences?.primary_language || 'en'}
+              secTranslations={secTranslations}
             />
           )}
 
@@ -1151,6 +1223,7 @@ function QuizCard({
   word, phase, lastAnswer, hasChanged, langFlag, canGoBack, quizMode,
   typedAnswer, onTypedAnswerChange, onCheckAnswer, onAnswer, onChangeAnswer,
   onGoBack, onNext, onInputFocus, onUpdateWord, collisionInfo, learningLang, primaryLang,
+  secTranslations,
 }) {
   const inputRef = useRef(null);
 
@@ -1341,6 +1414,20 @@ function QuizCard({
               {word.related_words    && <RevealField label="Related words" value={word.related_words} />}
               {word.other_useful_notes && <RevealField label="Notes"       value={word.other_useful_notes} />}
             </div>
+
+            {/* Secondary language chips — Easy mode only, cache-only, no API calls */}
+            {!isHard && secTranslations?.length > 0 && (
+              <div className={styles.secLangChips}>
+                {secTranslations.map(chip => (
+                  <span key={chip.lang} className={styles.secLangChip} translate="no">
+                    {chip.flag} {chip.word}
+                    {NON_LATIN.has(chip.lang) && (chip.kana_reading || chip.romanization) && (
+                      <span className={styles.secLangRoma}> {chip.kana_reading || chip.romanization}</span>
+                    )}
+                  </span>
+                ))}
+              </div>
+            )}
 
             <div className={styles.revealActions}>
               <button className={styles.nextBtn} onClick={onNext}>Next word →</button>
