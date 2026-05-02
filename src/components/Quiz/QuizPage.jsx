@@ -429,6 +429,18 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     const wordLang = current.word_language || preferences?.learning_language || 'es';
     const wordNorm = current.word.toLowerCase().trim();
 
+    // [DIAG] entry point
+    const wordsWithSessionId = words.filter(w => w.lookup_session_id != null).length;
+    console.log('[chips][entry]', {
+      word: current.word,
+      wordLang,
+      wordNorm,
+      lookup_session_id: current.lookup_session_id,
+      secLangs,
+      totalWords: words.length,
+      wordsWithSessionId,
+    });
+
     // ── Path 1: vocabulary siblings (same lookup_session_id, different word_language)
     // Instant — data already in the words prop. Works for polyglot saves (tags=['polyglot'])
     // added in the same Input lookup session since lookup_session_id was introduced.
@@ -451,10 +463,12 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         }
       }
     }
+    console.log('[chips][path1]', { found: vocabChips.length, chips: vocabChips });
     if (vocabChips.length > 0) setSecTranslations(vocabChips);
 
     // ── Path 2: word_cache lookup for langs not covered by vocab siblings
     const remainingLangs = secLangs.filter(l => !coveredLangs.has(l));
+    console.log('[chips][path2-start]', { remainingLangs });
     if (!remainingLangs.length) return;
 
     let cancelled = false;
@@ -464,7 +478,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         // ilike handles any case variation in result_word.
         // Fallback: if not found, use the quiz word itself as input_word
         // (covers direct lookups where input_language = learning_language).
-        const { data: primRows } = await supabase
+        const { data: primRows, error: primErr } = await supabase
           .from('word_cache')
           .select('input_word, input_language, primary_language')
           .ilike('result_word', wordNorm)
@@ -477,6 +491,16 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         const inputWord = primRow?.input_word ?? wordNorm;
         const inputLang = primRow?.input_language ?? wordLang;
         const primaryLang = primRow?.primary_language ?? (preferences?.primary_language || 'en');
+
+        console.log('[chips][path2-primary]', {
+          query: { result_word_ilike: wordNorm, learning_language: wordLang, mode: 'single' },
+          primRowFound: !!primRow,
+          primRow,
+          primErr,
+          resolvedInputWord: inputWord,
+          resolvedInputLang: inputLang,
+          resolvedPrimaryLang: primaryLang,
+        });
 
         // Step 2: fetch remaining secondary lang rows in parallel
         const results = await Promise.all(
@@ -495,6 +519,14 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         );
 
         if (cancelled) return;
+
+        console.log('[chips][path2-secondary]', results.map(r => ({
+          secLang: r.secLang,
+          rowFound: !!(r.data?.[0]?.result_word),
+          result_word: r.data?.[0]?.result_word ?? null,
+          error: r.error ?? null,
+        })));
+
         const cacheChips = results
           .map(({ data, secLang }) => {
             const row = data?.[0];
@@ -506,13 +538,17 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
           })
           .filter(Boolean);
 
+        console.log('[chips][path2-result]', { cacheChips });
+
         if (cacheChips.length > 0) {
           setSecTranslations(prev => {
             const seen = new Set(prev.map(c => c.lang));
             return [...prev, ...cacheChips.filter(c => !seen.has(c.lang))];
           });
         }
-      } catch { /* no chips on error */ }
+      } catch (err) {
+        console.error('[chips][path2-error]', err);
+      }
     })();
 
     return () => { cancelled = true; };
