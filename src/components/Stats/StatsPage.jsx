@@ -223,7 +223,7 @@ export default function StatsPage({ words, preferences }) {
   // ── Hardest words from FSRS (lapse_count primary, difficulty tiebreaker) ─
   const hardestFsrs = useMemo(() => {
     if (!fsrsRows) return null;
-    const wordMap = new Map(words.map(w => [w.id, w.word]));
+    const wordMap = new Map(words.map(w => [w.id, { word: w.word, meaning: w.meaning || '' }]));
     return [...fsrsRows]
       .filter(r => r.review_count >= 1)
       .sort((a, b) => {
@@ -232,11 +232,15 @@ export default function StatsPage({ words, preferences }) {
         return (b.difficulty || 0) - (a.difficulty || 0);
       })
       .slice(0, 10)
-      .map(r => ({
-        word: wordMap.get(r.word_id) || '?',
-        lapses: r.lapse_count || 0,
-        difficulty: r.difficulty != null ? +r.difficulty.toFixed(1) : null,
-      }));
+      .map(r => {
+        const info = wordMap.get(r.word_id) || { word: '?', meaning: '' };
+        return {
+          word: info.word,
+          meaning: info.meaning,
+          lapses: r.lapse_count || 0,
+          difficulty: r.difficulty != null ? +r.difficulty.toFixed(1) : null,
+        };
+      });
   }, [fsrsRows, words]);
 
   // ── Today's activity from review_log ────────────────────────────────────
@@ -523,13 +527,18 @@ export default function StatsPage({ words, preferences }) {
                   <XAxis type="number" allowDecimals={false} tick={{ fill: 'var(--text-muted)', fontSize: 11 }} tickFormatter={n => `${n}×`} />
                   <YAxis type="category" dataKey="word" width={110} tick={{ fill: 'var(--text-secondary)', fontSize: 12 }} />
                   <Tooltip
-                    contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, fontSize: 13 }}
-                    formatter={(val, name, props) => {
-                      const d = props.payload?.difficulty;
-                      const lines = [`${val} lapse${val !== 1 ? 's' : ''}`, `Difficulty: ${d ?? '—'}`];
-                      return [lines.join(' · '), ''];
-                    }}
                     cursor={{ fill: 'var(--bg-hover)' }}
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, maxWidth: 240 }}>
+                          <div style={{ fontWeight: 600, marginBottom: 2 }}>{d.word}</div>
+                          <div style={{ color: 'var(--text-muted)' }}>{d.lapses} lapse{d.lapses !== 1 ? 's' : ''} · Difficulty: {d.difficulty ?? '—'}</div>
+                          {d.meaning && <div style={{ color: 'var(--text-muted)', fontStyle: 'italic', marginTop: 4, lineHeight: 1.4 }}>{d.meaning}</div>}
+                        </div>
+                      );
+                    }}
                   />
                   <Bar dataKey="lapses" fill="var(--terracotta)" radius={[0,4,4,0]} />
                 </BarChart>
