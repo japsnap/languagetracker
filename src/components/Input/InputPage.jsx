@@ -42,6 +42,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const [autoSaveState, setAutoSaveState]             = useState(null); // null | { id, word }
   const [previewTags,   setPreviewTags]               = useState([]);
   const [noMoreMeanings, setNoMoreMeanings]           = useState(false);
+  const [primaryCardResult, setPrimaryCardResult]     = useState(null); // null | { status, data }
+  const [primarySaveState, setPrimarySaveState]       = useState({ status: 'idle', id: null });
   const abortRef           = useRef(null);
   const autoSaveTimer      = useRef(null);
   const searchInputRef     = useRef(null);
@@ -66,8 +68,15 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
   const learningLangObj = SUPPORTED_LANGUAGES.find(l => l.code === learningLang);
   const primaryLangObj  = SUPPORTED_LANGUAGES.find(l => l.code === primaryLang);
 
-  const splitActive = Object.keys(secondaryResults).length > 0 &&
+  const primaryLangCardActive = actualInputLang !== primaryLang &&
+                               (phase === 'preview' || phase === 'candidates') && !!fields.word;
+
+  const splitActive = (Object.keys(secondaryResults).length > 0 || primaryLangCardActive) &&
                       (phase === 'preview' || phase === 'candidates');
+
+  const primaryAlreadySaved = !!(primaryCardResult?.data?.word && words.some(
+    w => w.word?.toLowerCase() === primaryCardResult.data.word.toLowerCase() && w.word_language === primaryLang
+  ));
 
   const availableToAdd = SUPPORTED_LANGUAGES.filter(l =>
     l.code !== actualInputLang &&
@@ -91,6 +100,8 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     setAutoSaveState(null);
     setPreviewTags([]);
     setNoMoreMeanings(false);
+    setPrimaryCardResult(null);
+    setPrimarySaveState({ status: 'idle', id: null });
     lookupSessionIdRef.current = null;
     lookupTermRef.current = '';
     if (abortRef.current) abortRef.current.abort();
@@ -161,6 +172,50 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
     if (!state?.id) return;
     onRemoveWord(state.id);
     setSecondarySaveStates(prev => ({ ...prev, [langCode]: { status: 'idle', id: null } }));
+  }
+
+  // ── Primary language card (on-demand, only when inputLang ≠ primaryLang) ──────
+
+  async function handleShowPrimary() {
+    if (primaryCardResult) return;
+    setPrimaryCardResult({ status: 'loading', data: null });
+    try {
+      const data = await lookupWordSingle(fields.word, learningLang, primaryLang, primaryLang);
+      setPrimaryCardResult({ status: 'done', data });
+    } catch {
+      setPrimaryCardResult({ status: 'error', data: null });
+    }
+  }
+
+  async function handleSavePrimary(data) {
+    setPrimarySaveState({ status: 'saving', id: null });
+    try {
+      const wordData = {
+        ...aiResultToWordFields(data),
+        word_language:     primaryLang,
+        date_added:        localToday(),
+        last_reviewed:     null,
+        total_attempts:    0,
+        error_counter:     0,
+        correct_streak:    0,
+        starred:           false,
+        mastered:          false,
+        scene:             null,
+        tags:              ['polyglot'],
+        lookup_session_id: lookupSessionIdRef.current,
+      };
+      const saved = await onAddWord(wordData);
+      setPrimarySaveState({ status: 'saved', id: saved.id });
+    } catch (err) {
+      console.error('[primary-save]', err?.message);
+      setPrimarySaveState({ status: 'error', id: null });
+    }
+  }
+
+  function handleUndoPrimary() {
+    if (!primarySaveState.id) return;
+    onRemoveWord(primarySaveState.id);
+    setPrimarySaveState({ status: 'idle', id: null });
   }
 
   // ── Secondary lookups ─────────────────────────────────────────────────────────
@@ -504,6 +559,14 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
                 onUndo={handleUndoSecondary}
                 primaryLang={primaryLang}
                 inputLang={actualInputLang}
+                primaryLangCardActive={primaryLangCardActive}
+                primaryLangObj={primaryLangObj}
+                primaryCardResult={primaryCardResult}
+                primaryAlreadySaved={primaryAlreadySaved}
+                primarySaveState={primarySaveState}
+                onShowPrimary={handleShowPrimary}
+                onSavePrimary={() => handleSavePrimary(primaryCardResult?.data)}
+                onUndoPrimary={handleUndoPrimary}
               />
             )}
           </div>
@@ -538,7 +601,12 @@ export default function InputPage({ words, onAddWord, onRemoveWord, onUpdateWord
 
 // ── Secondary column ──────────────────────────────────────────────────────────
 
-function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguage, words, saveStates, onSave, onUndo, primaryLang, inputLang }) {
+function SecondaryColumn({
+  secondaryLangs, results, availableToAdd, onAddLanguage, words, saveStates, onSave, onUndo,
+  primaryLang, inputLang,
+  primaryLangCardActive, primaryLangObj, primaryCardResult, primaryAlreadySaved,
+  primarySaveState, onShowPrimary, onSavePrimary, onUndoPrimary,
+}) {
   const canAdd = secondaryLangs.length < 4 && availableToAdd.length > 0;
 
   return (
@@ -549,12 +617,10 @@ function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguag
         if (code === inputLang) return null;
         const entry = results[code];
         const data  = entry?.data;
-        // Pre-populate saved state if this word already exists in user's vocab for this language
         const alreadySaved = !!(data?.word && words.some(
           w => w.word?.toLowerCase() === data.word.toLowerCase() && w.word_language === code
         ));
         const saveState = saveStates[code] || { status: 'idle', id: null };
-        // Don't allow save if secondary lang equals primary lang (words would dedup against existing vocab)
         const canSave = entry?.status === 'done' && !!data?.word && code !== primaryLang && !alreadySaved;
         return (
           <SecondaryMiniCard
@@ -581,7 +647,43 @@ function SecondaryColumn({ secondaryLangs, results, availableToAdd, onAddLanguag
           ))}
         </select>
       )}
+      {primaryLangCardActive && primaryLangObj && (
+        <PrimaryLangCard
+          primaryLangObj={primaryLangObj}
+          entry={primaryCardResult}
+          alreadySaved={primaryAlreadySaved}
+          saveState={primarySaveState}
+          canSave={primaryCardResult?.status === 'done' && !!primaryCardResult?.data?.word && !primaryAlreadySaved}
+          onShow={onShowPrimary}
+          onSave={onSavePrimary}
+          onUndo={onUndoPrimary}
+        />
+      )}
     </div>
+  );
+}
+
+// ── PrimaryLangCard ───────────────────────────────────────────────────────────
+// Shows a "Show in [lang]" trigger button that expands into a SecondaryMiniCard on tap.
+
+function PrimaryLangCard({ primaryLangObj, entry, alreadySaved, saveState, canSave, onShow, onSave, onUndo }) {
+  if (!entry) {
+    return (
+      <button className={styles.showPrimaryBtn} onClick={onShow}>
+        Show in {primaryLangObj.flag} {primaryLangObj.label} →
+      </button>
+    );
+  }
+  return (
+    <SecondaryMiniCard
+      lang={primaryLangObj}
+      entry={entry}
+      alreadySaved={alreadySaved}
+      saveState={saveState}
+      canSave={canSave}
+      onSave={onSave}
+      onUndo={onUndo}
+    />
   );
 }
 

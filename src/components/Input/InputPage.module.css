@@ -922,6 +922,26 @@
   color: var(--text-secondary);
 }
 
+/* ── Primary language card trigger ──────────────────────────────────────────── */
+
+.showPrimaryBtn {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  background: transparent;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, color 0.15s;
+}
+.showPrimaryBtn:hover {
+  border-color: var(--text-muted);
+  color: var(--text-secondary);
+}
+
 /* ── Responsive ──────────────────────────────────────────────────────────────── */
 
 @media (max-width: 767px) {
