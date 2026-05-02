@@ -410,34 +410,69 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     const secLangs = (preferences?.secondary_languages || []).slice(0, 4);
     if (!secLangs.length) { setSecTranslations([]); return; }
 
-    let cancelled = false;
+    const secLangSet = new Set(secLangs);
     const wordLang = current.word_language || preferences?.learning_language || 'es';
+    const wordNorm = current.word.toLowerCase().trim();
 
+    // ── Path 1: vocabulary siblings (same lookup_session_id, different word_language)
+    // Instant — data already in the words prop. Works for polyglot saves (tags=['polyglot'])
+    // added in the same Input lookup session since lookup_session_id was introduced.
+    const vocabChips = [];
+    const coveredLangs = new Set();
+    if (current.lookup_session_id) {
+      for (const w of words) {
+        if (
+          w.lookup_session_id === current.lookup_session_id &&
+          w.id !== current.id &&
+          w.word_language &&
+          secLangSet.has(w.word_language) &&
+          !coveredLangs.has(w.word_language)
+        ) {
+          const langObj = SUPPORTED_LANGUAGES.find(l => l.code === w.word_language);
+          if (langObj) {
+            vocabChips.push({ lang: w.word_language, flag: langObj.flag, word: w.word, romanization: w.romanization || null, kana_reading: w.kana_reading || null });
+            coveredLangs.add(w.word_language);
+          }
+        }
+      }
+    }
+    if (vocabChips.length > 0) setSecTranslations(vocabChips);
+
+    // ── Path 2: word_cache lookup for langs not covered by vocab siblings
+    const remainingLangs = secLangs.filter(l => !coveredLangs.has(l));
+    if (!remainingLangs.length) return;
+
+    let cancelled = false;
     (async () => {
       try {
-        // Find the primary cache row to get the input_word used for this lookup
+        // Step 1: find primary cache row to get the original input_word.
+        // ilike handles any case variation in result_word.
+        // Fallback: if not found, use the quiz word itself as input_word
+        // (covers direct lookups where input_language = learning_language).
         const { data: primRows } = await supabase
           .from('word_cache')
           .select('input_word, input_language, primary_language')
-          .eq('result_word', current.word)
+          .ilike('result_word', wordNorm)
           .eq('learning_language', wordLang)
           .eq('mode', 'single')
           .limit(1);
 
         if (cancelled) return;
         const primRow = primRows?.[0];
-        if (!primRow) return; // no primary row — can't resolve secondary rows
+        const inputWord = primRow?.input_word ?? wordNorm;
+        const inputLang = primRow?.input_language ?? wordLang;
+        const primaryLang = primRow?.primary_language ?? (preferences?.primary_language || 'en');
 
-        // Fetch all secondary lang rows in parallel (cache-only, no API calls)
+        // Step 2: fetch remaining secondary lang rows in parallel
         const results = await Promise.all(
-          secLangs.map(secLang =>
+          remainingLangs.map(secLang =>
             supabase
               .from('word_cache')
               .select('result_word, response')
-              .eq('input_word', primRow.input_word)
-              .eq('input_language', primRow.input_language)
+              .eq('input_word', inputWord)
+              .eq('input_language', inputLang)
               .eq('learning_language', secLang)
-              .eq('primary_language', primRow.primary_language)
+              .eq('primary_language', primaryLang)
               .eq('mode', 'single')
               .limit(1)
               .then(r => ({ ...r, secLang }))
@@ -445,24 +480,23 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
         );
 
         if (cancelled) return;
-        const chips = results
+        const cacheChips = results
           .map(({ data, secLang }) => {
             const row = data?.[0];
             if (!row?.result_word) return null;
             const langObj = SUPPORTED_LANGUAGES.find(l => l.code === secLang);
             if (!langObj) return null;
             const resp = row.response || {};
-            return {
-              lang: secLang,
-              flag: langObj.flag,
-              word: row.result_word,
-              romanization: resp.romanization || null,
-              kana_reading: resp.kana_reading || null,
-            };
+            return { lang: secLang, flag: langObj.flag, word: row.result_word, romanization: resp.romanization || null, kana_reading: resp.kana_reading || null };
           })
           .filter(Boolean);
 
-        setSecTranslations(chips);
+        if (cacheChips.length > 0) {
+          setSecTranslations(prev => {
+            const seen = new Set(prev.map(c => c.lang));
+            return [...prev, ...cacheChips.filter(c => !seen.has(c.lang))];
+          });
+        }
       } catch { /* no chips on error */ }
     })();
 
