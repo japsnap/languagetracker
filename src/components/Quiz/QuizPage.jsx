@@ -422,12 +422,17 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       setSecTranslations([]);
       return;
     }
-    const secLangs = (preferences?.secondary_languages || []).slice(0, 4);
-    if (!secLangs.length) { setSecTranslations([]); return; }
+    const secLangs    = (preferences?.secondary_languages || []).slice(0, 4);
+    const learningLang = preferences?.learning_language || 'es';
+    const wordLang    = current.word_language || learningLang;
+    const wordNorm    = current.word.toLowerCase().trim();
 
-    const secLangSet = new Set(secLangs);
-    const wordLang = current.word_language || preferences?.learning_language || 'es';
-    const wordNorm = current.word.toLowerCase().trim();
+    // Candidate langs = secondary langs + learning lang, deduped, minus the card's own lang.
+    // This ensures: (a) the card's language is never shown as a chip; (b) when the card is
+    // a secondary-language word (e.g. Urdu), the learning language (e.g. ES) is also shown.
+    const candidateLangs    = [...new Set([...secLangs, learningLang])].filter(l => l !== wordLang);
+    const candidateLangSet  = new Set(candidateLangs);
+    if (!candidateLangs.length) { setSecTranslations([]); return; }
 
     // [DIAG] entry point
     const wordsWithSessionId = words.filter(w => w.lookup_session_id != null).length;
@@ -436,7 +441,9 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
       wordLang,
       wordNorm,
       lookup_session_id: current.lookup_session_id,
+      learningLang,
       secLangs,
+      candidateLangs,
       totalWords: words.length,
       wordsWithSessionId,
     });
@@ -452,7 +459,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
           w.lookup_session_id === current.lookup_session_id &&
           w.id !== current.id &&
           w.word_language &&
-          secLangSet.has(w.word_language) &&
+          candidateLangSet.has(w.word_language) &&
           !coveredLangs.has(w.word_language)
         ) {
           const langObj = SUPPORTED_LANGUAGES.find(l => l.code === w.word_language);
@@ -467,7 +474,7 @@ export default function QuizPage({ words, onUpdateWord, onAddWord, preferences, 
     if (vocabChips.length > 0) setSecTranslations(vocabChips);
 
     // ── Path 2: word_cache lookup for langs not covered by vocab siblings
-    const remainingLangs = secLangs.filter(l => !coveredLangs.has(l));
+    const remainingLangs = candidateLangs.filter(l => !coveredLangs.has(l));
     console.log('[chips][path2-start]', { remainingLangs });
     if (!remainingLangs.length) return;
 
