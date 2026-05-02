@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-05-02 (auth, quiz fixes, Input page polish)
+
+- **Magic link (email OTP) auth** — Email sign-in added as a secondary option on the login page. Always visible below the Google button. `supabase.auth.signInWithOtp({ email, options: { emailRedirectTo: origin } })`. States: idle → loading ("Sending…") → success ("Check your email for a login link") or inline error. Existing Google OAuth users with the same email land in their existing account (Supabase identity linking). New users get default preferences via the existing `getPreferences` path.
+
+- **In-app browser detection on login** — Checks UA for `FBAN`, `FBAV`, `Instagram`, `Line/`, `Twitter`, `HelloTalk`, `wv` (Android WebView). When detected: Google sign-in button is replaced by a banner ("For Google sign-in and app install, please open this page in Chrome or Safari") with a Copy Link button (clipboard, 2s "Copied!" feedback). Email magic link form remains below the banner as a working alternative in-app.
+
+- **"See more meanings" — sense-priority multi-mode prompt** — Multi-mode suffix now prioritizes genuinely different senses (e.g. "bank" → banco/orilla/bancada) and falls back to synonyms only when the word has one primary meaning (e.g. "beautiful" → hermoso/lindo/bello). Explicitly forbids mixing sense-translations and synonyms in the same response. Also fixes two prior regressions: (1) `meaning_native` field excluded from multi-mode prompt (was collapsing all results to 1 item); (2) original typed term preserved via `lookupTermRef` (was sending the already-translated word back to the API after input cleared).
+
+- **`word_alternatives` chips on PreviewCard** — Synonyms from `word_alternatives` (already returned by every single-mode AI call) now render as small chips below the romanization row on the primary Input page card. Zero extra API calls.
+
+- **"Last added words" section** — Replaced session-local `sessionAdded` state with a derived slice of the `words` prop sorted by `id DESC LIMIT 5`. Shows the last 5 words across all sessions. Title changed from "Added this session" to "Last added words". Undo still works via `onRemoveWord`.
+
+- **FIX: Hard mode quiz timing** — `revealedAtRef` (response timer start) moved from `startOrNext` (fires before React paint) to the Hard mode input field's `onFocus` event. Timer now starts when the user actually engages with the input. Guard `if (!revealedAtRef.current)` prevents overwrite on re-focus. Scale formula in `inferGradeHardMode` changed from `Math.max(1, wordLength / 6)` to `Math.min(3, wordLength / 6)`: short words (<6 chars) now get tighter time windows; long words capped at 3× baseline (21s easy / 36s good).
+
+- **FIX: duplicate FSRS writes on rapid double-click** — `answerInFlightRef` guard added to `handleAnswer`. First click locks the ref; any subsequent call before `startOrNext` resets it is a no-op. Prevents duplicate `review_log` rows and double session counter increments. Covers all entry points: Easy mode tap buttons, Hard mode self-assess buttons, Enter/Check typed-answer path.
+
 ## 2026-05-01 (polyglot save — secondary mini-card save button)
 
 - **Save button on secondary mini-cards** — Each secondary language card now has a Save button. Clicking creates a real vocabulary row for that language with `tags=['polyglot']` and `lookup_session_id` shared with the primary auto-save. States: idle → saving (spinner) → Saved ✓ + 5s undo. Button is absent when: the word already exists in vocab for that language; the secondary language equals the user's primary language (dedup guard); or the card is still loading.
