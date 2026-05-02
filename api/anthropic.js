@@ -19,9 +19,14 @@
 // ---------------------------------------------------------------------------
 const PROVIDER = {
   name: 'anthropic',
-  model: 'claude-sonnet-4-20250514',
   apiUrl: 'https://api.anthropic.com/v1/messages',
   apiKeyEnvVar: 'ANTHROPIC_API_KEY',
+};
+
+// Per-call-type model config — swap individual entries without touching call sites.
+const MODEL_CONFIG = {
+  default:  'claude-haiku-4-5-20251001', // single, multi, explore
+  insights: 'claude-haiku-4-5-20251001', // can swap to claude-sonnet-4-20250514 later
 };
 
 // ---------------------------------------------------------------------------
@@ -176,10 +181,11 @@ async function verifySession(token) {
 }
 
 /** Build the provider-specific upstream request body. */
-function buildUpstreamRequest(systemPrompt, word, maxTokens) {
+function buildUpstreamRequest(systemPrompt, word, maxTokens, mode) {
+  const model = mode === 'insights' ? MODEL_CONFIG.insights : MODEL_CONFIG.default;
   // Anthropic format — update this function when switching providers
   return {
-    model: PROVIDER.model,
+    model,
     max_tokens: maxTokens,
     system: systemPrompt,
     messages: [{ role: 'user', content: word }],
@@ -268,7 +274,7 @@ export default async function handler(req, res) {
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
       },
-      body: JSON.stringify(buildUpstreamRequest(systemPrompt, userMessage, maxTokens)),
+      body: JSON.stringify(buildUpstreamRequest(systemPrompt, userMessage, maxTokens, mode)),
     });
 
     const data = await upstream.json();
